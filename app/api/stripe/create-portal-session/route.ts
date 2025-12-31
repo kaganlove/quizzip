@@ -39,7 +39,7 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "No Stripe customer found for this user yet" }, { status: 400 });
     }
 
-    const stripe = new Stripe(secretKey, { apiVersion: "2024-06-20" });
+    const stripe = new Stripe(secretKey);
     const portal = await stripe.billingPortal.sessions.create({
       customer: customerId,
       return_url: `${appUrl}/`,
