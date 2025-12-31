@@ -29,7 +29,7 @@ export async function POST(req: Request) {
 
     const userId = userRes.user.id;
     const email = (userRes.user.email || "").trim();
-    const stripe = new Stripe(secretKey, { apiVersion: "2024-06-20" });
+    const stripe = new Stripe(secretKey);
 
     const { data: row } = await admin
       .from("subscriptions")

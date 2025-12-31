@@ -4,9 +4,13 @@ import { supabaseAdmin } from "../../../../lib/supabaseAdmin";
 
 export const runtime = "nodejs";
 
-const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || "", {
-  apiVersion: "2024-06-20",
-});
+const secretKey = process.env.STRIPE_SECRET_KEY;
+if (!secretKey) {
+  return NextResponse.json({ error: "Missing STRIPE_SECRET_KEY" }, { status: 500 });
+}
+
+const stripe = new Stripe(secretKey);
+
 
 async function resolveUserIdFromCustomer(customerId: string): Promise<string | null> {
   try {
