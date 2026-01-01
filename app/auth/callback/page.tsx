@@ -10,7 +10,27 @@ export default function AuthCallbackPage() {
     const run = async () => {
       const supabase = supabaseBrowser();
 
-      const { error } = await supabase.auth.exchangeCodeForSession(window.location.href);
+      // Google returns an OAuth "code" in the query string
+      const url = new URL(window.location.href);
+
+      // If Google/Supabase sent back an error, show it
+      const oauthError =
+        url.searchParams.get("error_description") ||
+        url.searchParams.get("error");
+
+      if (oauthError) {
+        setMsg(decodeURIComponent(oauthError));
+        return;
+      }
+
+      const code = url.searchParams.get("code");
+
+      if (!code) {
+        setMsg("Missing OAuth code in callback URL. Try signing in again.");
+        return;
+      }
+
+      const { error } = await supabase.auth.exchangeCodeForSession(code);
 
       if (error) {
         setMsg(error.message);
