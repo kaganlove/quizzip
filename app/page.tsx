@@ -44,8 +44,6 @@ export default function Page() {
     }
   };
 
-
-
   // Auth and subscription state
   const [userEmail, setUserEmail] = useState<string>("");
   const [accessToken, setAccessToken] = useState<string>("");
@@ -70,7 +68,6 @@ export default function Page() {
     return `${status}${suffix}${intervalPart}`;
   }, [subStatus, subPeriodEnd, subCancelAtPeriodEnd, subInterval]);
 
-
   function sanitizeHtml(html: string) {
     return DOMPurify.sanitize(html, {
       // Allow blob: URLs created from zip resources and data: URLs if they appear.
@@ -88,7 +85,8 @@ export default function Page() {
       setUserEmail(email);
       setAccessToken(token);
 
-      if (!token) {
+      // Important: TypeScript needs an explicit guard that session exists
+      if (!token || !session?.user?.id) {
         setSubStatus("");
         setSubPeriodEnd(null);
         setSubCancelAtPeriodEnd(false);
@@ -97,10 +95,12 @@ export default function Page() {
         return;
       }
 
+      const userId = session.user.id;
+
       const { data: row, error: subErr } = await supabase
         .from("subscriptions")
         .select("status, current_period_end, cancel_at_period_end, price_interval")
-        .eq("user_id", session.user.id)
+        .eq("user_id", userId)
         .maybeSingle();
 
       if (subErr) {
@@ -167,10 +167,7 @@ export default function Page() {
     const success = url.searchParams.get("success");
     const sessionId = url.searchParams.get("session_id") || url.searchParams.get("stripe_session_id");
 
-    const looksLikeCheckoutReturn =
-      checkout === "success" ||
-      success === "true" ||
-      Boolean(sessionId);
+    const looksLikeCheckoutReturn = checkout === "success" || success === "true" || Boolean(sessionId);
 
     if (!looksLikeCheckoutReturn) return;
 
@@ -225,17 +222,13 @@ export default function Page() {
 
     return (
       <div className="small" style={{ marginTop: 10 }}>
-        <span style={{ fontWeight: 800 }}>Correct:</span>{" "}
-        <span className="code">{letters.join(", ")}</span>
+        <span style={{ fontWeight: 800 }}>Correct:</span> <span className="code">{letters.join(", ")}</span>
         {texts.length > 0 && <span> {texts.join(" | ")}</span>}
       </div>
     );
   }
 
-  const selected = useMemo(
-    () => assessments.find((a) => a.id === selectedId) ?? null,
-    [assessments, selectedId]
-  );
+  const selected = useMemo(() => assessments.find((a) => a.id === selectedId) ?? null, [assessments, selectedId]);
 
   const freePreviewLimit = 5;
 
@@ -492,7 +485,7 @@ export default function Page() {
         a {
           color: #cfe2ff;
         }
-      
+
         .brand {
           display: flex;
           align-items: center;
@@ -509,7 +502,7 @@ export default function Page() {
           display: flex;
           flex-direction: column;
         }
-`}</style>
+      `}</style>
 
       <div className="brand">
         <img className="brandLogo" src="/quizzip-logo.png" alt="QuizZip logo" />
@@ -524,12 +517,7 @@ export default function Page() {
       <div className="grid">
         <div className="card" style={{ flex: "1 1 320px", minWidth: 300 }}>
           <h2>1) Upload</h2>
-          <input
-            type="file"
-            accept=".zip"
-            onChange={(e) => void onPickFile(e.target.files?.[0] ?? null)}
-            disabled={loading}
-          />
+          <input type="file" accept=".zip" onChange={(e) => void onPickFile(e.target.files?.[0] ?? null)} disabled={loading} />
           <div style={{ height: 10 }} />
           <div className="small">Nothing is uploaded to our servers.</div>
 
@@ -589,7 +577,11 @@ export default function Page() {
                   Subscription status: {subscriptionLabel}
                 </div>
               </div>
-              {notice ? <div className="notice" style={{ marginTop: 10 }}>{notice}</div> : null}
+              {notice ? (
+                <div className="notice" style={{ marginTop: 10 }}>
+                  {notice}
+                </div>
+              ) : null}
 
               <div style={{ height: 10 }} />
 
@@ -603,8 +595,7 @@ export default function Page() {
                     Subscribe yearly
                   </button>
                   <div className="small" style={{ marginTop: 10 }}>
-                    After payment, return here and exports unlock automatically. If it does not unlock, log out and log
-                    in again.
+                    After payment, return here and exports unlock automatically. If it does not unlock, log out and log in again.
                   </div>
                 </>
               )}
@@ -680,8 +671,8 @@ export default function Page() {
                   <div className="notice">
                     <b>This export does not include questions</b>
                     <div style={{ marginTop: 6 }}>
-                      It references question banks ({selected.bankRefCount} bank refs). Canvas does not embed those
-                      questions in this quiz export zip, so preview and export are not possible for this assessment.
+                      It references question banks ({selected.bankRefCount} bank refs). Canvas does not embed those questions in this quiz export zip,
+                      so preview and export are not possible for this assessment.
                     </div>
                   </div>
                 </>
