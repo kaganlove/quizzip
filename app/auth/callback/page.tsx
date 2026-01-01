@@ -9,15 +9,11 @@ export default function AuthCallbackPage() {
   useEffect(() => {
     const run = async () => {
       const supabase = supabaseBrowser();
-
-      // Google returns an OAuth "code" in the query string
       const url = new URL(window.location.href);
 
-      // If Google/Supabase sent back an error, show it
+      // If provider returned an explicit error, show it
       const oauthError =
-        url.searchParams.get("error_description") ||
-        url.searchParams.get("error");
-
+        url.searchParams.get("error_description") || url.searchParams.get("error");
       if (oauthError) {
         setMsg(decodeURIComponent(oauthError));
         return;
@@ -25,13 +21,18 @@ export default function AuthCallbackPage() {
 
       const code = url.searchParams.get("code");
 
+      // If there's no code, we might already be signed in (second hit / refresh / back button)
       if (!code) {
+        const { data } = await supabase.auth.getSession();
+        if (data?.session) {
+          window.location.replace("/");
+          return;
+        }
         setMsg("Missing OAuth code in callback URL. Try signing in again.");
         return;
       }
 
       const { error } = await supabase.auth.exchangeCodeForSession(code);
-
       if (error) {
         setMsg(error.message);
         return;
