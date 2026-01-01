@@ -10,15 +10,59 @@ export default function LoginPage() {
   const [password, setPassword] = useState("");
   const [msg, setMsg] = useState("");
 
+  async function signInWithGoogle() {
+    setMsg("");
+    const redirectTo = `${window.location.origin}/auth/callback`;
+
+    const { error } = await supabase.auth.signInWithOAuth({
+      provider: "google",
+      options: { redirectTo },
+    });
+
+    if (error) setMsg(error.message);
+  }
+
+  async function signInWithPassword() {
+    setMsg("");
+    const { error } = await supabase.auth.signInWithPassword({ email, password });
+    if (error) setMsg(error.message);
+    else window.location.href = "/";
+  }
+
   return (
     <main style={{ padding: 24, maxWidth: 520 }}>
-      <h1 style={{ fontSize: 28, fontWeight: 900 }}>QuizZip</h1>
-      <p style={{ opacity: 0.85, marginTop: 8 }}>Log in with email and password.</p>
+      <h1 style={{ fontSize: 28, fontWeight: 900 }}>Quizzip</h1>
+      <p style={{ opacity: 0.85, marginTop: 8 }}>Log in with email and password, or Google.</p>
 
       <div style={{ height: 18 }} />
 
+      <button
+        onClick={signInWithGoogle}
+        style={{
+          width: "100%",
+          padding: "12px 14px",
+          fontWeight: 900,
+          borderRadius: 10,
+          border: "1px solid rgba(255,255,255,0.18)",
+          background: "rgba(255,255,255,0.08)",
+          cursor: "pointer",
+        }}
+      >
+        Continue with Google
+      </button>
+
+      <div style={{ height: 18 }} />
+
+      <div style={{ opacity: 0.7, fontWeight: 800, fontSize: 12 }}>OR</div>
+
+      <div style={{ height: 12 }} />
+
       <label style={{ display: "block", fontWeight: 800 }}>Email</label>
-      <input value={email} onChange={(e) => setEmail(e.target.value)} style={{ width: "100%", padding: 10, marginTop: 6 }} />
+      <input
+        value={email}
+        onChange={(e) => setEmail(e.target.value)}
+        style={{ width: "100%", padding: 10, marginTop: 6 }}
+      />
 
       <div style={{ height: 12 }} />
 
@@ -32,15 +76,7 @@ export default function LoginPage() {
 
       <div style={{ height: 16 }} />
 
-      <button
-        onClick={async () => {
-          setMsg("");
-          const { error } = await supabase.auth.signInWithPassword({ email, password });
-          if (error) setMsg(error.message);
-          else window.location.href = "/";
-        }}
-        style={{ padding: "10px 14px", fontWeight: 800 }}
-      >
+      <button onClick={signInWithPassword} style={{ padding: "10px 14px", fontWeight: 800 }}>
         Log in
       </button>
 
@@ -49,9 +85,15 @@ export default function LoginPage() {
       <div style={{ height: 14 }} />
 
       <div style={{ display: "flex", gap: 14, flexWrap: "wrap" }}>
-        <Link href="/signup" style={{ textDecoration: "underline" }}>Create account</Link>
-        <Link href="/reset" style={{ textDecoration: "underline" }}>Forgot password</Link>
-        <Link href="/" style={{ textDecoration: "underline" }}>Back</Link>
+        <Link href="/signup" style={{ textDecoration: "underline" }}>
+          Create account
+        </Link>
+        <Link href="/reset" style={{ textDecoration: "underline" }}>
+          Forgot password
+        </Link>
+        <Link href="/" style={{ textDecoration: "underline" }}>
+          Back
+        </Link>
       </div>
     </main>
   );
