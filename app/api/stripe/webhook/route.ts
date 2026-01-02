@@ -1,271 +1,230 @@
 // app/api/stripe/webhook/route.ts
-
 import { NextResponse } from "next/server";
 import Stripe from "stripe";
-import { headers } from "next/headers";
-import { createClient } from "@supabase/supabase-js";
+import { supabaseAdmin } from "../../../../lib/supabaseAdmin";
 
 export const runtime = "nodejs";
-export const dynamic = "force-dynamic";
 
-function requireEnv(name: string) {
-  const v = process.env[name];
-  if (!v) throw new Error(`Missing env var: ${name}`);
-  return v;
+function toIsoFromUnixSeconds(value: unknown): string | null {
+  if (typeof value !== "number" || !Number.isFinite(value)) return null;
+  return new Date(value * 1000).toISOString();
 }
 
-const STRIPE_SECRET_KEY = requireEnv("STRIPE_SECRET_KEY");
-const STRIPE_WEBHOOK_SECRET = requireEnv("STRIPE_WEBHOOK_SECRET");
-
-const SUPABASE_URL =
-  process.env.SUPABASE_URL ||
-  process.env.NEXT_PUBLIC_SUPABASE_URL ||
-  "";
-if (!SUPABASE_URL) throw new Error("Missing SUPABASE_URL or NEXT_PUBLIC_SUPABASE_URL");
-
-const SUPABASE_SERVICE_ROLE_KEY = requireEnv("SUPABASE_SERVICE_ROLE_KEY");
-
-// Do not set apiVersion here to avoid TS mismatches with codenamed versions.
-// Stripe will use your account default for requests.
-const stripe = new Stripe(STRIPE_SECRET_KEY, {
-  typescript: true,
-});
-
-const supabaseAdmin = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {
-  auth: { persistSession: false, autoRefreshToken: false },
-});
-
-type UpsertPayload = {
-  user_id: string;
-  email: string | null;
-  stripe_customer_id: string | null;
-  stripe_subscription_id: string | null;
-  status: string | null;
-  price_id: string | null;
-  current_period_start?: string | null;
-  current_period_end?: string | null;
-};
-
-async function upsertSubscriptionRow(payload: UpsertPayload) {
-  const { data, error } = await supabaseAdmin
-    .from("subscriptions")
-    .upsert(payload, { onConflict: "user_id" })
-    .select()
-    .maybeSingle();
-
-  if (error) {
-    console.error("Supabase upsert error", { error, payload });
-    throw error;
-  }
-
-  console.log("Supabase upsert ok", { user_id: payload.user_id, status: payload.status });
-  return data;
-}
-
-async function findUserIdByCustomerId(customerId: string) {
-  const { data, error } = await supabaseAdmin
-    .from("subscriptions")
-    .select("user_id")
-    .eq("stripe_customer_id", customerId)
-    .maybeSingle();
-
-  if (error) {
-    console.error("Supabase lookup error", { error, customerId });
+async function getEmailForUserId(admin: any, userId: string): Promise<string | null> {
+  try {
+    // supabase-js v2 supports auth.admin.getUserById with service role
+    const res = await admin.auth.admin.getUserById(userId);
+    return res?.data?.user?.email ?? null;
+  } catch {
     return null;
   }
-
-  return data?.user_id ?? null;
 }
 
-function toIsoFromUnixSeconds(x: unknown) {
-  if (typeof x !== "number") return null;
-  return new Date(x * 1000).toISOString();
+async function upsertSubscriptionRow(args: {
+  userId: string;
+  email: string | null;
+  customerId: string | null;
+  subscriptionId: string | null;
+  status: string | null;
+  priceId: string | null;
+  currentPeriodEnd: string | null;
+  cancelAtPeriodEnd: boolean | null;
+  priceInterval: string | null;
+}) {
+  const admin = supabaseAdmin();
+
+  const payload: Record<string, any> = {
+    user_id: args.userId,
+    email: args.email,
+    stripe_customer_id: args.customerId,
+    stripe_subscription_id: args.subscriptionId,
+    status: args.status,
+    price_id: args.priceId,
+    current_period_end: args.currentPeriodEnd,
+    cancel_at_period_end: args.cancelAtPeriodEnd,
+    price_interval: args.priceInterval,
+  };
+
+  const { error } = await admin
+    .from("subscriptions")
+    .upsert(payload, { onConflict: "user_id" });
+
+  if (error) {
+    throw new Error(`Supabase upsert failed: ${error.message}`);
+  }
+}
+
+function getSubscriptionBasics(sub: any) {
+  const customerId =
+    typeof sub.customer === "string" ? sub.customer : sub.customer?.id ?? null;
+
+  const price = sub?.items?.data?.[0]?.price ?? null;
+  const priceId = price?.id ?? null;
+  const priceInterval = price?.recurring?.interval ?? null;
+
+  const currentPeriodEnd = toIsoFromUnixSeconds(sub?.current_period_end);
+  const cancelAtPeriodEnd =
+    typeof sub?.cancel_at_period_end === "boolean" ? sub.cancel_at_period_end : null;
+
+  const status = typeof sub?.status === "string" ? sub.status : null;
+
+  const subscriptionId = typeof sub?.id === "string" ? sub.id : null;
+
+  return {
+    customerId,
+    priceId,
+    priceInterval,
+    currentPeriodEnd,
+    cancelAtPeriodEnd,
+    status,
+    subscriptionId,
+  };
 }
 
 export async function POST(req: Request) {
+  const stripeSecretKey = process.env.STRIPE_SECRET_KEY;
+  const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET;
+
+  if (!stripeSecretKey || !webhookSecret) {
+    return NextResponse.json(
+      { error: "Missing STRIPE_SECRET_KEY or STRIPE_WEBHOOK_SECRET" },
+      { status: 500 }
+    );
+  }
+
+  const sig = req.headers.get("stripe-signature");
+  if (!sig) {
+    return NextResponse.json({ error: "Missing stripe-signature header" }, { status: 400 });
+  }
+
+  const rawBody = await req.text();
+
+  const stripe = new Stripe(stripeSecretKey, {
+    // keep this aligned with your Stripe setting, or omit to use Stripe default
+    apiVersion: "2025-12-15.clover" as any,
+  });
+
+  let event: Stripe.Event;
   try {
-    const sig = (await headers()).get("stripe-signature");
-    if (!sig) {
-      console.error("Missing stripe-signature header");
-      return NextResponse.json({ error: "Missing stripe-signature" }, { status: 400 });
+    event = stripe.webhooks.constructEvent(rawBody, sig, webhookSecret);
+  } catch (err: any) {
+    return NextResponse.json(
+      { error: "Webhook signature verification failed", detail: err?.message ?? String(err) },
+      { status: 400 }
+    );
+  }
+
+  try {
+    // Prefer subscription events for syncing entitlements
+    if (
+      event.type === "customer.subscription.created" ||
+      event.type === "customer.subscription.updated" ||
+      event.type === "customer.subscription.deleted"
+    ) {
+      const sub = event.data.object as any;
+
+      const userIdRaw = sub?.metadata?.user_id;
+      const userId = typeof userIdRaw === "string" ? userIdRaw : "";
+
+      if (!userId) {
+        console.log("Subscription event missing metadata.user_id", { eventType: event.type, subId: sub?.id });
+        return NextResponse.json({ received: true });
+      }
+
+      const admin = supabaseAdmin();
+      const email = await getEmailForUserId(admin, userId);
+
+      const basics = getSubscriptionBasics(sub);
+
+      await upsertSubscriptionRow({
+        userId,
+        email,
+        customerId: basics.customerId,
+        subscriptionId: basics.subscriptionId,
+        status: basics.status,
+        priceId: basics.priceId,
+        currentPeriodEnd: basics.currentPeriodEnd,
+        cancelAtPeriodEnd: basics.cancelAtPeriodEnd,
+        priceInterval: basics.priceInterval,
+      });
+
+      return NextResponse.json({ received: true });
     }
 
-    const rawBody = await req.text();
+    // Optional: Checkout session completed can also be used to force a sync
+    if (event.type === "checkout.session.completed") {
+      const session = event.data.object as any;
 
-    let event: Stripe.Event;
-    try {
-      event = stripe.webhooks.constructEvent(rawBody, sig, STRIPE_WEBHOOK_SECRET);
-    } catch (err: any) {
-      console.error("Webhook signature verification failed", err?.message || err);
-      return NextResponse.json({ error: "Invalid signature" }, { status: 400 });
+      const userIdRaw = session?.metadata?.user_id;
+      const userId = typeof userIdRaw === "string" ? userIdRaw : "";
+
+      const customerId = typeof session?.customer === "string" ? session.customer : null;
+      const subscriptionId =
+        typeof session?.subscription === "string"
+          ? session.subscription
+          : session?.subscription?.id ?? null;
+
+      if (!userId || !customerId || !subscriptionId) {
+        console.log("Checkout session missing linkage", {
+          userIdPresent: !!userId,
+          customerIdPresent: !!customerId,
+          subscriptionIdPresent: !!subscriptionId,
+        });
+        return NextResponse.json({ received: true });
+      }
+
+      const admin = supabaseAdmin();
+      const email = await getEmailForUserId(admin, userId);
+
+      // Pull the subscription so we can store price, interval, status, period end
+      const sub = await stripe.subscriptions.retrieve(subscriptionId, {
+        expand: ["items.data.price"],
+      });
+
+      const basics = getSubscriptionBasics(sub as any);
+
+      await upsertSubscriptionRow({
+        userId,
+        email,
+        customerId: basics.customerId ?? customerId,
+        subscriptionId: basics.subscriptionId ?? subscriptionId,
+        status: basics.status,
+        priceId: basics.priceId,
+        currentPeriodEnd: basics.currentPeriodEnd,
+        cancelAtPeriodEnd: basics.cancelAtPeriodEnd,
+        priceInterval: basics.priceInterval,
+      });
+
+      return NextResponse.json({ received: true });
     }
 
-    // Log the event type so you can see what is actually hitting prod.
-    console.log("Stripe event received", { type: event.type, id: event.id });
+    // Keep invoice events for logging, but do not rely on them
+    if (event.type === "invoice.paid") {
+      const invoice = event.data.object as any;
 
-    // We cast to any in a few places because Stripe type shapes vary by API version.
-    switch (event.type) {
-      case "checkout.session.completed": {
-        const session = event.data.object as any;
+      const subscriptionId =
+        typeof invoice?.subscription === "string"
+          ? invoice.subscription
+          : invoice?.subscription?.id ??
+            invoice?.lines?.data?.find((l: any) => typeof l?.subscription === "string")?.subscription ??
+            null;
 
-        // Only care about subscription checkouts
-        if (session?.mode !== "subscription") break;
-
-        const userId: string | null =
-          session?.metadata?.user_id ||
-          session?.client_reference_id ||
-          null;
-
-        const email: string | null =
-          session?.customer_details?.email ||
-          session?.customer_email ||
-          session?.metadata?.email ||
-          null;
-
-        const customerId: string | null =
-          typeof session?.customer === "string"
-            ? session.customer
-            : session?.customer?.id || null;
-
-        const subscriptionId: string | null =
-          typeof session?.subscription === "string"
-            ? session.subscription
-            : session?.subscription?.id || null;
-
-        if (!userId) {
-          console.error("checkout.session.completed missing userId", { sessionId: session?.id });
-          break;
-        }
-
-        if (!subscriptionId) {
-          console.error("checkout.session.completed missing subscriptionId", { sessionId: session?.id });
-          break;
-        }
-
-        const sub = await stripe.subscriptions.retrieve(subscriptionId, {
-          expand: ["items.data.price"],
-        }) as any;
-
-        const priceId: string | null =
-          sub?.items?.data?.[0]?.price?.id || null;
-
-        const status: string | null = sub?.status || null;
-
-        await upsertSubscriptionRow({
-          user_id: userId,
-          email,
-          stripe_customer_id: customerId,
-          stripe_subscription_id: subscriptionId,
-          status,
-          price_id: priceId,
-          current_period_start: toIsoFromUnixSeconds(sub?.current_period_start),
-          current_period_end: toIsoFromUnixSeconds(sub?.current_period_end),
-        });
-
-        break;
+      if (!subscriptionId) {
+        console.log("Invoice event without subscriptionId", { invoiceId: invoice?.id, type: event.type });
+        return NextResponse.json({ received: true });
       }
 
-      case "customer.subscription.created":
-      case "customer.subscription.updated":
-      case "customer.subscription.deleted": {
-        const sub = event.data.object as any;
-
-        const subscriptionId: string | null = sub?.id || null;
-        const customerId: string | null =
-          typeof sub?.customer === "string" ? sub.customer : sub?.customer?.id || null;
-
-        const userIdFromMeta: string | null = sub?.metadata?.user_id || null;
-
-        const userId =
-          userIdFromMeta ||
-          (customerId ? await findUserIdByCustomerId(customerId) : null);
-
-        if (!userId) {
-          console.error("subscription event missing userId", { subscriptionId, customerId, type: event.type });
-          break;
-        }
-
-        const priceId: string | null =
-          sub?.items?.data?.[0]?.price?.id || null;
-
-        const status: string | null = sub?.status || null;
-
-        await upsertSubscriptionRow({
-          user_id: userId,
-          email: null,
-          stripe_customer_id: customerId,
-          stripe_subscription_id: subscriptionId,
-          status,
-          price_id: priceId,
-          current_period_start: toIsoFromUnixSeconds(sub?.current_period_start),
-          current_period_end: toIsoFromUnixSeconds(sub?.current_period_end),
-        });
-
-        break;
-      }
-
-      case "invoice.paid":
-      case "invoice.payment_failed": {
-        const invoice = event.data.object as any;
-
-        const customerId: string | null =
-          typeof invoice?.customer === "string" ? invoice.customer : invoice?.customer?.id || null;
-
-        const subscriptionId: string | null =
-          typeof invoice?.subscription === "string"
-            ? invoice.subscription
-            : invoice?.subscription?.id || null;
-
-        // If we do not have a subscription, there is nothing to update
-        if (!subscriptionId) {
-          console.log("Invoice event without subscriptionId", { invoiceId: invoice?.id, type: event.type });
-          break;
-        }
-
-        const sub = await stripe.subscriptions.retrieve(subscriptionId, {
-          expand: ["items.data.price"],
-        }) as any;
-
-        const status: string | null = sub?.status || null;
-        const priceId: string | null = sub?.items?.data?.[0]?.price?.id || null;
-
-        const userIdFromMeta: string | null = sub?.metadata?.user_id || null;
-        const userId =
-          userIdFromMeta ||
-          (customerId ? await findUserIdByCustomerId(customerId) : null);
-
-        if (!userId) {
-          console.error("invoice event could not resolve userId", {
-            invoiceId: invoice?.id,
-            subscriptionId,
-            customerId,
-            type: event.type,
-          });
-          break;
-        }
-
-        await upsertSubscriptionRow({
-          user_id: userId,
-          email: invoice?.customer_email || null,
-          stripe_customer_id: customerId,
-          stripe_subscription_id: subscriptionId,
-          status,
-          price_id: priceId,
-          current_period_start: toIsoFromUnixSeconds(sub?.current_period_start),
-          current_period_end: toIsoFromUnixSeconds(sub?.current_period_end),
-        });
-
-        break;
-      }
-
-      default:
-        // Ignore everything else
-        break;
+      // If you want, you can retrieve and upsert here too, but subscription events already cover it
+      return NextResponse.json({ received: true });
     }
 
     return NextResponse.json({ received: true });
   } catch (err: any) {
-    console.error("Webhook handler crashed", err?.message || err);
-    return NextResponse.json({ error: "Webhook handler failed" }, { status: 500 });
+    console.error("Stripe webhook handler failed", err?.message ?? err);
+    // Returning 500 makes Stripe retry, which is what you want if Supabase write failed
+    return NextResponse.json(
+      { error: "Webhook handler failed", detail: err?.message ?? String(err) },
+      { status: 500 }
+    );
   }
 }
