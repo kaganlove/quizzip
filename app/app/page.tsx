@@ -4,11 +4,11 @@ import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import DOMPurify from "dompurify";
 
-import type { Assessment, Item } from "../lib/types";
-import { loadAssessmentItems, parseCanvasQtiZip } from "../lib/qti";
-import { downloadBlob, exportDocx, exportXlsx } from "../lib/exporters";
-import { stripHtml } from "../lib/html";
-import { supabaseBrowser } from "../lib/supabaseClient";
+import type { Assessment, Item } from "../../lib/types";
+import { loadAssessmentItems, parseCanvasQtiZip } from "../../lib/qti";
+import { downloadBlob, exportDocx, exportXlsx } from "../../lib/exporters";
+import { stripHtml } from "../../lib/html";
+import { supabaseBrowser } from "../../lib/supabaseClient";
 
 function pillClass(a: Assessment) {
   if (a.itemCount > 0) return "pill good";
@@ -614,7 +614,7 @@ export default function Page() {
                 className="btn"
                 onClick={async () => {
                   await supabase.auth.signOut();
-                  window.location.href = "/";
+                  window.location.href = "/app";
                 }}
               >
                 Log out
