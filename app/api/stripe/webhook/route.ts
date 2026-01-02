@@ -1,116 +1,117 @@
 import Stripe from "stripe";
-import { createClient } from "@supabase/supabase-js";
+import { NextResponse } from "next/server";
+import { supabaseAdmin } from "../../../../lib/supabaseAdmin";
 
 export const runtime = "nodejs";
-export const dynamic = "force-dynamic";
 
-const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || "", {
+const stripeSecretKey = process.env.STRIPE_SECRET_KEY;
+const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET;
+
+if (!stripeSecretKey) {
+  throw new Error("Missing STRIPE_SECRET_KEY");
+}
+
+const stripe = new Stripe(stripeSecretKey, {
   apiVersion: "2025-12-15.clover" as any,
 });
 
-function getSupabaseAdmin() {
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+type UpsertRow = {
+  user_id: string;
+  email?: string | null;
+  stripe_customer_id?: string | null;
+  stripe_subscription_id?: string | null;
+  status?: string | null;
+  price_id?: string | null;
+};
 
-  if (!url || !serviceKey) {
-    throw new Error("Missing Supabase env vars: NEXT_PUBLIC_SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY");
+function asId(value: unknown): string | undefined {
+  if (!value) return undefined;
+  if (typeof value === "string") return value;
+  if (typeof value === "object" && value !== null && "id" in value) {
+    const v = (value as any).id;
+    return typeof v === "string" ? v : undefined;
   }
-
-  return createClient(url, serviceKey, {
-    auth: { persistSession: false, autoRefreshToken: false },
-  });
+  return undefined;
 }
 
-function asId(x: unknown): string | null {
-  if (typeof x === "string") return x;
-  if (x && typeof x === "object" && "id" in x && typeof (x as any).id === "string") return (x as any).id;
-  return null;
+function pickEmailFromCustomer(customer: unknown): string | undefined {
+  const email = (customer as any)?.email;
+  return typeof email === "string" ? email : undefined;
 }
 
-async function upsertSubscriptionFromSubscriptionId(subscriptionId: string) {
-  const supabase = getSupabaseAdmin();
-
-  const subscription = await stripe.subscriptions.retrieve(subscriptionId, {
-    expand: ["customer", "items.data.price"],
-  });
-
-  const userId =
-    subscription.metadata?.user_id ||
-    subscription.metadata?.userId ||
-    subscription.metadata?.supabase_user_id ||
-    null;
-
-  if (!userId) {
-    console.warn("Subscription missing metadata user_id", { subscriptionId });
-    return;
-  }
-
-  const customerId = asId(subscription.customer);
-  const customerEmail =
-    typeof subscription.customer === "object" && subscription.customer
-      ? (subscription.customer as Stripe.Customer).email
-      : null;
-
-  const priceId =
-    subscription.items?.data?.[0]?.price?.id ||
-    null;
-
-  const payload = {
-    user_id: userId,
-    email: customerEmail,
-    stripe_customer_id: customerId,
-    stripe_subscription_id: subscription.id,
-    status: subscription.status,
-    price_id: priceId,
-  };
-
-  const { error } = await supabase
+async function upsertSubscriptionRow(row: UpsertRow) {
+  const { error } = await supabaseAdmin
     .from("subscriptions")
-    .upsert(payload, { onConflict: "user_id" });
+    .upsert(row, { onConflict: "user_id" });
 
   if (error) {
-    console.error("Supabase upsert failed", { error, payload });
-  } else {
-    console.log("Supabase subscription upsert ok", payload);
+    console.error("Supabase upsert failed", error);
+    throw new Error(error.message);
   }
 }
 
-async function upsertSubscriptionFromInvoice(invoiceId: string) {
-  const invoice = await stripe.invoices.retrieve(invoiceId, {
-    expand: ["subscription", "customer", "lines.data.subscription"],
+async function syncFromSubscriptionId(subscriptionId: string) {
+  const sub = await stripe.subscriptions.retrieve(subscriptionId, {
+    expand: ["items.data.price", "customer"],
   });
 
-  let subscriptionId = asId(invoice.subscription);
-
-  if (!subscriptionId) {
-    for (const line of invoice.lines?.data || []) {
-      const lineSubId = asId((line as any).subscription);
-      if (lineSubId) {
-        subscriptionId = lineSubId;
-        break;
-      }
-    }
-  }
-
-  if (!subscriptionId) {
-    console.warn("Invoice event without subscriptionId", { invoiceId, type: invoice.status });
+  const userId = sub.metadata?.user_id;
+  if (!userId) {
+    console.warn("Subscription missing metadata.user_id", { subscriptionId });
     return;
   }
 
-  await upsertSubscriptionFromSubscriptionId(subscriptionId);
+  const customerId = asId(sub.customer);
+  const email = pickEmailFromCustomer(sub.customer) ?? sub.metadata?.email ?? null;
+  const priceId = sub.items?.data?.[0]?.price?.id ?? null;
+
+  await upsertSubscriptionRow({
+    user_id: userId,
+    email,
+    stripe_customer_id: customerId ?? null,
+    stripe_subscription_id: sub.id,
+    status: sub.status ?? null,
+    price_id: priceId,
+  });
+}
+
+async function syncFromInvoiceId(invoiceId: string) {
+  const invoice = await stripe.invoices.retrieve(invoiceId, {
+    expand: ["subscription", "customer", "lines.data.price"],
+  });
+
+  const subscriptionId =
+    asId((invoice as any).subscription) ||
+    asId((invoice as any).subscription_details?.subscription);
+
+  if (!subscriptionId) {
+    console.warn("Invoice has no subscription id", { invoiceId });
+    return;
+  }
+
+  await syncFromSubscriptionId(subscriptionId);
+}
+
+async function markCanceledBySubscriptionId(subscriptionId: string) {
+  const { error } = await supabaseAdmin
+    .from("subscriptions")
+    .update({ status: "canceled" })
+    .eq("stripe_subscription_id", subscriptionId);
+
+  if (error) {
+    console.error("Supabase cancel update failed", error);
+    throw new Error(error.message);
+  }
 }
 
 export async function POST(req: Request) {
-  const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET;
   if (!webhookSecret) {
     console.error("Missing STRIPE_WEBHOOK_SECRET");
-    return new Response("Server misconfigured", { status: 500 });
+    return new Response("Webhook secret not configured", { status: 500 });
   }
 
   const sig = req.headers.get("stripe-signature");
-  if (!sig) {
-    return new Response("Missing stripe-signature", { status: 400 });
-  }
+  if (!sig) return new Response("Missing stripe-signature", { status: 400 });
 
   const rawBody = await req.text();
 
@@ -118,47 +119,45 @@ export async function POST(req: Request) {
   try {
     event = stripe.webhooks.constructEvent(rawBody, sig, webhookSecret);
   } catch (err: any) {
-    console.error("Webhook signature verification failed:", err?.message || err);
+    console.error("Webhook signature verification failed", err?.message || err);
     return new Response("Webhook Error", { status: 400 });
   }
 
   try {
-    // Stripe destination events you showed are heavily invoice driven
-    const invoiceDriven = new Set<string>([
-      "invoice.created",
-      "invoice.finalized",
-      "invoice.finalization_failed",
-      "invoice.paid",
-      "invoice.payment_failed",
-      "invoice.payment_action_required",
-      "invoice.updated",
-      "invoice.upcoming",
-    ]);
+    const type = event.type;
 
-    if (invoiceDriven.has(event.type)) {
-      const invoice = event.data.object as Stripe.Invoice;
-      console.log("Stripe event received", { type: event.type, id: event.id, invoiceId: invoice.id });
-      await upsertSubscriptionFromInvoice(invoice.id);
-      return Response.json({ received: true });
-    }
-
-    // If Stripe also delivers these, handle them too
-    if (
-      event.type === "customer.subscription.created" ||
-      event.type === "customer.subscription.updated" ||
-      event.type === "customer.subscription.deleted"
+    if (type.startsWith("invoice.")) {
+      const invoiceId = (event.data.object as any)?.id;
+      if (typeof invoiceId === "string") {
+        await syncFromInvoiceId(invoiceId);
+      } else {
+        console.warn("Invoice event missing id", { type });
+      }
+    } else if (
+      type === "customer.subscription.created" ||
+      type === "customer.subscription.updated"
     ) {
-      const sub = event.data.object as Stripe.Subscription;
-      console.log("Stripe subscription event received", { type: event.type, id: event.id, subId: sub.id });
-      await upsertSubscriptionFromSubscriptionId(sub.id);
-      return Response.json({ received: true });
+      const subscriptionId = (event.data.object as any)?.id;
+      if (typeof subscriptionId === "string") {
+        await syncFromSubscriptionId(subscriptionId);
+      } else {
+        console.warn("Subscription event missing id", { type });
+      }
+    } else if (type === "customer.subscription.deleted") {
+      const subscriptionId = (event.data.object as any)?.id;
+      if (typeof subscriptionId === "string") {
+        await markCanceledBySubscriptionId(subscriptionId);
+      } else {
+        console.warn("Subscription deleted event missing id", { type });
+      }
+    } else {
+      // You can keep this, or remove if you want quieter logs
+      console.log("Ignoring event type", type);
     }
-
-    // Ignore everything else for now
-    console.log("Stripe event ignored", { type: event.type, id: event.id });
-    return Response.json({ received: true });
   } catch (err: any) {
-    console.error("Webhook handler failed:", err?.message || err);
-    return new Response("Webhook handler failed", { status: 500 });
+    console.error("Webhook handler failed", err?.message || err);
+    return new Response("Webhook handler error", { status: 500 });
   }
+
+  return NextResponse.json({ received: true });
 }
