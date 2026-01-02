@@ -1,72 +1,92 @@
 import Stripe from "stripe";
-import { NextResponse } from "next/server";
-import { supabaseAdmin } from "../../../../lib/supabaseAdmin";
+import { createClient } from "@supabase/supabase-js";
+import { z } from "zod";
 
 export const runtime = "nodejs";
 
-export async function POST(req: Request) {
-  const secretKey = process.env.STRIPE_SECRET_KEY;
-  const appUrl = process.env.APP_URL;
-  const priceMonthly = process.env.STRIPE_PRICE_ID_MONTHLY;
-  const priceYearly = process.env.STRIPE_PRICE_ID_YEARLY;
+const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || "", {
+  apiVersion: "2025-12-15.clover" as any,
+});
 
-  if (!secretKey || !appUrl || !priceMonthly || !priceYearly) {
-    return NextResponse.json(
-      { error: "Missing env vars. Check STRIPE_SECRET_KEY, APP_URL, STRIPE_PRICE_ID_MONTHLY, STRIPE_PRICE_ID_YEARLY" },
-      { status: 500 }
-    );
+const BodySchema = z.object({
+  access_token: z.string(),
+  billingPeriod: z.enum(["monthly", "annual"]).default("monthly"),
+});
+
+function getSupabaseWithAccessToken(accessToken: string) {
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const anon = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+
+  if (!url || !anon) {
+    throw new Error("Missing Supabase env vars: NEXT_PUBLIC_SUPABASE_URL or NEXT_PUBLIC_SUPABASE_ANON_KEY");
   }
 
-  const body = await req.json().catch(() => ({} as any));
-  const access_token = body?.access_token as string | undefined;
-  const billing = (body?.billing as string | undefined) ?? "monthly";
-
-  if (!access_token) {
-    return NextResponse.json({ error: "Missing access_token" }, { status: 401 });
-  }
-
-  const admin = supabaseAdmin();
-  const { data: userRes, error: userErr } = await admin.auth.getUser(access_token);
-  if (userErr || !userRes?.user) {
-    return NextResponse.json({ error: "Invalid session" }, { status: 401 });
-  }
-
-  const user = userRes.user;
-  const email = user.email ?? "";
-  const userId = user.id;
-
-  const stripe = new Stripe(secretKey);
-
-  const { data: subRow } = await admin
-    .from("subscriptions")
-    .select("stripe_customer_id")
-    .eq("user_id", userId)
-    .maybeSingle();
-
-  let customerId = subRow?.stripe_customer_id ?? null;
-
-  if (!customerId) {
-    const customer = await stripe.customers.create({
-      email: email || undefined,
-      metadata: { user_id: userId },
-    });
-    customerId = customer.id;
-  }
-
-  const priceId = billing === "yearly" ? priceYearly : priceMonthly;
-
-  const session = await stripe.checkout.sessions.create({
-    mode: "subscription",
-    customer: customerId,
-    client_reference_id: userId,
-    line_items: [{ price: priceId, quantity: 1 }],
-    success_url: `${appUrl}/?checkout=success&session_id={CHECKOUT_SESSION_ID}`,
-    cancel_url: `${appUrl}/?checkout=cancel`,
-    allow_promotion_codes: true,
-    subscription_data: {
-      metadata: { user_id: userId },
+  return createClient(url, anon, {
+    auth: { persistSession: false, autoRefreshToken: false },
+    global: {
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+      },
     },
   });
+}
 
-  return NextResponse.json({ url: session.url });
+export async function POST(req: Request) {
+  try {
+    const body = BodySchema.parse(await req.json());
+
+    const supabase = getSupabaseWithAccessToken(body.access_token);
+    const { data, error } = await supabase.auth.getUser();
+
+    if (error || !data?.user) {
+      return new Response("Unauthorized", { status: 401 });
+    }
+
+    const user = data.user;
+    const userId = user.id;
+    const email = user.email;
+
+    if (!email) {
+      return new Response("User missing email", { status: 400 });
+    }
+
+    const monthlyPriceId = process.env.STRIPE_PRICE_ID_MONTHLY;
+    const annualPriceId = process.env.STRIPE_PRICE_ID_ANNUAL;
+    const priceId = body.billingPeriod === "annual" ? annualPriceId : monthlyPriceId;
+
+    if (!priceId) {
+      return new Response("Missing Stripe price env var", { status: 500 });
+    }
+
+    const appUrl = process.env.NEXT_PUBLIC_APP_URL || process.env.NEXT_PUBLIC_SITE_URL;
+    if (!appUrl) {
+      return new Response("Missing NEXT_PUBLIC_APP_URL (or NEXT_PUBLIC_SITE_URL)", { status: 500 });
+    }
+
+    // Create customer (optional but helpful)
+    const customer = await stripe.customers.create({
+      email,
+      metadata: { user_id: userId },
+    });
+
+    const session = await stripe.checkout.sessions.create({
+      mode: "subscription",
+      customer: customer.id,
+      client_reference_id: userId,
+      line_items: [{ price: priceId, quantity: 1 }],
+      success_url: `${appUrl}/dashboard?checkout=success`,
+      cancel_url: `${appUrl}/pricing?checkout=cancel`,
+      // Critical: metadata must land on the subscription so invoice events can map back to Supabase user
+      subscription_data: {
+        metadata: { user_id: userId, email },
+      },
+      metadata: { user_id: userId, email },
+      allow_promotion_codes: true,
+    });
+
+    return Response.json({ url: session.url });
+  } catch (err: any) {
+    console.error("Checkout error", err?.message || err);
+    return new Response("Checkout error", { status: 500 });
+  }
 }
