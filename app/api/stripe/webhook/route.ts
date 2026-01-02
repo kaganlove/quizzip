@@ -7,9 +7,7 @@ export const runtime = "nodejs";
 const secretKey = process.env.STRIPE_SECRET_KEY;
 const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET;
 
-if (!secretKey) {
-  throw new Error("Missing STRIPE_SECRET_KEY");
-}
+if (!secretKey) throw new Error("Missing STRIPE_SECRET_KEY");
 
 const stripe = new Stripe(secretKey);
 
@@ -122,10 +120,7 @@ export async function POST(req: Request) {
     event = stripe.webhooks.constructEvent(rawBody, sig, webhookSecret);
   } catch (err: any) {
     console.error("Webhook signature verification failed:", err?.message || err);
-    return NextResponse.json(
-      { error: "Invalid webhook signature" },
-      { status: 400 }
-    );
+    return NextResponse.json({ error: "Invalid webhook signature" }, { status: 400 });
   }
 
   try {
@@ -162,13 +157,15 @@ export async function POST(req: Request) {
 
       case "invoice.paid":
       case "invoice.payment_failed": {
+        // Stripe types are inconsistent across versions; some omit `subscription` on Invoice.
         const invoice = event.data.object as Stripe.Invoice;
+        const subscriptionRaw = (invoice as any).subscription;
 
         const subscriptionId =
-          typeof invoice.subscription === "string"
-            ? invoice.subscription
-            : invoice.subscription
-              ? String(invoice.subscription)
+          typeof subscriptionRaw === "string"
+            ? subscriptionRaw
+            : subscriptionRaw
+              ? String(subscriptionRaw)
               : null;
 
         if (!subscriptionId) break;
@@ -176,7 +173,7 @@ export async function POST(req: Request) {
         const sub = await stripe.subscriptions.retrieve(subscriptionId);
 
         const email =
-          invoice.customer_email ||
+          (invoice as any).customer_email ||
           (invoice as any).customer_details?.email ||
           "";
 
@@ -191,9 +188,6 @@ export async function POST(req: Request) {
     return NextResponse.json({ received: true });
   } catch (err: any) {
     console.error("Webhook handler error:", err?.message || err);
-    return NextResponse.json(
-      { error: "Webhook handler failed" },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: "Webhook handler failed" }, { status: 500 });
   }
 }
