@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { supabaseBrowser } from "../../lib/supabaseClient";
 
@@ -10,9 +10,23 @@ export default function LoginPage() {
   const [password, setPassword] = useState("");
   const [msg, setMsg] = useState("");
 
+  const targetNext = useMemo(() => {
+    if (typeof window === "undefined") return "/app";
+    const url = new URL(window.location.href);
+    return url.searchParams.get("next") || "/app";
+  }, []);
+
+  useEffect(() => {
+    const run = async () => {
+      const { data } = await supabase.auth.getSession();
+      if (data?.session) window.location.href = targetNext;
+    };
+    run();
+  }, [supabase, targetNext]);
+
   async function signInWithGoogle() {
     setMsg("");
-    const redirectTo = `${window.location.origin}/auth/callback`;
+    const redirectTo = `${window.location.origin}/auth/callback?next=${encodeURIComponent(targetNext)}`;
 
     const { error } = await supabase.auth.signInWithOAuth({
       provider: "google",
@@ -26,13 +40,24 @@ export default function LoginPage() {
     setMsg("");
     const { error } = await supabase.auth.signInWithPassword({ email, password });
     if (error) setMsg(error.message);
-    else window.location.href = "/";
+    else window.location.href = targetNext;
   }
 
   return (
     <main style={{ padding: 24, maxWidth: 520 }}>
-      <h1 style={{ fontSize: 28, fontWeight: 900 }}>Quizzip</h1>
-      <p style={{ opacity: 0.85, marginTop: 8 }}>Log in with email and password, or Google.</p>
+      <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+        <img
+          src="/quizzip-logo.png"
+          alt="Quizzip logo"
+          style={{ width: 44, height: 44, objectFit: "contain" }}
+        />
+        <div>
+          <h1 style={{ fontSize: 28, fontWeight: 900, margin: 0 }}>Quizzip</h1>
+          <p style={{ opacity: 0.85, marginTop: 4, marginBottom: 0 }}>
+            Log in with email and password, or Google.
+          </p>
+        </div>
+      </div>
 
       <div style={{ height: 18 }} />
 

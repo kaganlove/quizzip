@@ -1,7 +1,7 @@
 import Link from "next/link";
 
 export const metadata = {
-  title: "QuizZip",
+  title: "Quizzip",
   description:
     "View Canvas Classic quiz export zips in a clean format and export to Word with images. Parsing happens in your browser.",
 };
@@ -16,10 +16,10 @@ export default function LandingPage() {
         <header className="topbar">
           <div className="brand">
             <div className="logo" aria-hidden="true">
-              QZ
+              <img className="logoImg" src="/quizzip-logo.png" alt="" />
             </div>
             <div className="brandText">
-              <div className="brandName">QuizZip</div>
+              <div className="brandName">Quizzip</div>
               <div className="brandSub">Canvas Classic quiz export viewer</div>
             </div>
           </div>
@@ -37,11 +37,8 @@ export default function LandingPage() {
           </nav>
 
           <div className="actions">
-            <Link className="btn btnGhost" href="/login">
+            <Link className="btn btnPrimary" href="/login?next=/app">
               Log in
-            </Link>
-            <Link className="btn btnPrimary" href="/app">
-              Launch app
             </Link>
           </div>
         </header>
@@ -57,8 +54,8 @@ export default function LandingPage() {
             </p>
 
             <div className="ctaRow">
-              <Link className="btn btnPrimary" href="/app">
-                Launch app
+              <Link className="btn btnPrimary" href="/login?next=/app">
+                Log in
               </Link>
               <Link className="btn btnGhost" href="/signup">
                 Create account
@@ -160,7 +157,7 @@ export default function LandingPage() {
                 <span className="dot" />
                 <span className="dot" />
                 <span className="dot" />
-                <span className="mockTitle">QuizZip preview</span>
+                <span className="mockTitle">Quizzip preview</span>
               </div>
 
               <div className="mockBody">
@@ -214,37 +211,29 @@ export default function LandingPage() {
 
           <details className="qa">
             <summary>Do my files get uploaded anywhere</summary>
-            <div className="qaBody">
-              No. Parsing happens in your browser. Your zip file is not uploaded to our servers.
-            </div>
+            <div className="qaBody">No. Parsing happens in your browser. Your zip file is not uploaded to our servers.</div>
           </details>
 
           <details className="qa">
             <summary>Does it support New Quizzes</summary>
-            <div className="qaBody">
-              Right now it is focused on Canvas Classic quiz export zips.
-            </div>
+            <div className="qaBody">Right now it is focused on Canvas Classic quiz export zips.</div>
           </details>
 
           <details className="qa">
             <summary>Can I cancel anytime</summary>
-            <div className="qaBody">
-              Yes. You can manage billing from the app and cancel whenever you want.
-            </div>
+            <div className="qaBody">Yes. You can manage billing from the app and cancel whenever you want.</div>
           </details>
 
           <details className="qa">
             <summary>Will images export to Word</summary>
-            <div className="qaBody">
-              Yes. If the export zip includes images, QuizZip includes them in the Word export.
-            </div>
+            <div className="qaBody">Yes. If the export zip includes images, Quizzip includes them in the Word export.</div>
           </details>
         </section>
 
         <footer className="footer">
-          <div className="footerLeft">© {new Date().getFullYear()} QuizZip</div>
+          <div className="footerLeft">© {new Date().getFullYear()} Quizzip</div>
           <div className="footerRight">
-            <Link className="footerLink" href="/login">
+            <Link className="footerLink" href="/login?next=/app">
               Log in
             </Link>
             <span className="footerSep" aria-hidden="true">
@@ -252,12 +241,6 @@ export default function LandingPage() {
             </span>
             <Link className="footerLink" href="/signup">
               Create account
-            </Link>
-            <span className="footerSep" aria-hidden="true">
-              •
-            </span>
-            <Link className="footerLink" href="/app">
-              Launch app
             </Link>
           </div>
         </footer>
@@ -308,13 +291,19 @@ const css = `
   .logo{
     width:44px; height:44px;
     border-radius:12px;
-    background:rgba(255,255,255,0.10);
+    background:rgba(255,255,255,0.06);
     border:1px solid rgba(255,255,255,0.14);
     display:grid;
     place-items:center;
-    font-weight:900;
-    letter-spacing:0.2px;
+    overflow:hidden;
   }
+  .logoImg{
+    width:34px;
+    height:34px;
+    object-fit:contain;
+    display:block;
+  }
+
   .brandText{display:flex; flex-direction:column; gap:2px;}
   .brandName{font-weight:900; font-size:18px;}
   .brandSub{opacity:0.70; font-size:12px;}

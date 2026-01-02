@@ -11,9 +11,9 @@ export default function AuthCallbackPage() {
       const supabase = supabaseBrowser();
       const url = new URL(window.location.href);
 
-      // If provider returned an explicit error, show it
-      const oauthError =
-        url.searchParams.get("error_description") || url.searchParams.get("error");
+      const next = url.searchParams.get("next") || "/app";
+
+      const oauthError = url.searchParams.get("error_description") || url.searchParams.get("error");
       if (oauthError) {
         setMsg(decodeURIComponent(oauthError));
         return;
@@ -21,11 +21,11 @@ export default function AuthCallbackPage() {
 
       const code = url.searchParams.get("code");
 
-      // If there's no code, we might already be signed in (second hit / refresh / back button)
+      // If there's no code, we might already be signed in (refresh/back)
       if (!code) {
         const { data } = await supabase.auth.getSession();
         if (data?.session) {
-          window.location.replace("/");
+          window.location.replace(next);
           return;
         }
         setMsg("Missing OAuth code in callback URL. Try signing in again.");
@@ -38,7 +38,7 @@ export default function AuthCallbackPage() {
         return;
       }
 
-      window.location.replace("/");
+      window.location.replace(next);
     };
 
     run();
