@@ -50,7 +50,6 @@ function getCorrectChoiceIds(itemEl: Element): string[] {
   const vals = Array.from(itemEl.getElementsByTagName("varequal"))
     .map((v) => (v.textContent ?? "").trim())
     .filter(Boolean);
-  // Dedupe while keeping order
   return Array.from(new Set(vals));
 }
 
@@ -83,14 +82,20 @@ function parseQtiAssessment(qtiXmlText: string, idFromPath: string, qtiPath: str
   return assessment;
 }
 
-export async function parseCanvasQtiZip(file: File): Promise<ParseResult> {
+function cleanBundleLabel(path: string): string {
+  const base = path.replace(/\\/g, "/").split("/").pop() ?? path;
+  const noExt = base.toLowerCase().endsWith(".zip") ? base.slice(0, -4) : base;
+  return noExt.replace(/_+/g, " ").trim() || noExt;
+}
+
+async function parseSinglePackageZip(zip: JSZip, qtiPathPrefix: string | null, label: string | null): Promise<ParseResult> {
   const warnings: string[] = [];
 
-  const buf = await file.arrayBuffer();
-  const zip = await JSZip.loadAsync(buf);
-
   const manifestFile = zip.file("imsmanifest.xml");
-  if (!manifestFile) throw new Error("imsmanifest.xml not found. This does not look like a Canvas quiz export zip.");
+  if (!manifestFile) {
+    throw new Error("imsmanifest.xml not found.");
+  }
+
   const manifestText = await manifestFile.async("text");
   const manifestDoc = parseXml(manifestText);
 
@@ -98,10 +103,11 @@ export async function parseCanvasQtiZip(file: File): Promise<ParseResult> {
   const qtiResources = resources.filter((r) => r.getAttribute("type") === "imsqti_xmlv1p2");
 
   if (qtiResources.length === 0) {
-    throw new Error("No QTI resources found in manifest. This might not be a Classic Quiz export.");
+    throw new Error("No QTI resources found in manifest.");
   }
 
   const assessments: Assessment[] = [];
+
   for (const res of qtiResources) {
     const files = Array.from(res.getElementsByTagName("file"));
     const href = files[0]?.getAttribute("href") ?? "";
@@ -109,25 +115,79 @@ export async function parseCanvasQtiZip(file: File): Promise<ParseResult> {
 
     const qtiFile = zip.file(href);
     if (!qtiFile) {
-      warnings.push("Manifest referenced a file that was not found: " + href);
+      warnings.push((label ? `${label}: ` : "") + "Manifest referenced a file that was not found: " + href);
       continue;
     }
 
     const qtiText = await qtiFile.async("text");
 
     const idFromPath = href.split("/")[0] || href;
+
+    const qtiPath = qtiPathPrefix ? `${qtiPathPrefix}::${href}` : href;
+
     try {
-      const assessment = parseQtiAssessment(qtiText, idFromPath, href);
+      const assessment = parseQtiAssessment(qtiText, idFromPath, qtiPath);
+
+      if (label) {
+        assessment.title = `${label} | ${assessment.title}`;
+        assessment.id = `${label}:${assessment.id}`;
+      }
+
       assessments.push(assessment);
     } catch (e: any) {
-      warnings.push("Could not parse assessment " + href + ": " + (e?.message ?? String(e)));
+      warnings.push((label ? `${label}: ` : "") + "Could not parse assessment " + href + ": " + (e?.message ?? String(e)));
     }
   }
 
-  // Sort by title for sanity
   assessments.sort((a, b) => a.title.localeCompare(b.title));
-
   return { assessments, warnings };
+}
+
+function listNestedZipPaths(zip: JSZip): string[] {
+  const all = Object.keys(zip.files);
+  return all
+    .filter((p) => p.toLowerCase().endsWith(".zip"))
+    .filter((p) => !zip.files[p].dir);
+}
+
+export async function parseCanvasQtiZip(file: File): Promise<ParseResult> {
+  const buf = await file.arrayBuffer();
+  const outerZip = await JSZip.loadAsync(buf);
+
+  const rootManifest = outerZip.file("imsmanifest.xml");
+
+  if (rootManifest) {
+    return parseSinglePackageZip(outerZip, null, null);
+  }
+
+  const nestedZips = listNestedZipPaths(outerZip);
+  if (nestedZips.length === 0) {
+    throw new Error("No imsmanifest.xml found and no nested zip packages found. This does not look like a supported QTI export.");
+  }
+
+  const allAssessments: Assessment[] = [];
+  const allWarnings: string[] = [];
+
+  for (const nestedPath of nestedZips) {
+    const f = outerZip.file(nestedPath);
+    if (!f) continue;
+
+    try {
+      const innerBuf = await f.async("arraybuffer");
+      const innerZip = await JSZip.loadAsync(innerBuf);
+
+      const label = cleanBundleLabel(nestedPath);
+
+      const parsed = await parseSinglePackageZip(innerZip, nestedPath, label);
+      allAssessments.push(...parsed.assessments);
+      allWarnings.push(...parsed.warnings);
+    } catch (e: any) {
+      allWarnings.push(`${cleanBundleLabel(nestedPath)}: Could not parse nested package: ${e?.message ?? String(e)}`);
+    }
+  }
+
+  allAssessments.sort((a, b) => a.title.localeCompare(b.title));
+  return { assessments: allAssessments, warnings: Array.from(new Set(allWarnings)) };
 }
 
 type LoadItemsResult = { items: Item[]; warnings: string[] };
@@ -146,12 +206,10 @@ function normalizeRef(raw: string): string {
   s = s.replace(/\\/g, "/");
   s = safeDecodeURIComponent(s);
 
-  // Common IMS CC placeholder
   if (s.startsWith("$IMS-CC-FILEBASE$/")) {
     s = s.slice("$IMS-CC-FILEBASE$/".length);
   }
 
-  // Strip leading markers
   s = s.replace(/^\.\//, "");
   s = s.replace(/^\//, "");
   return s;
@@ -192,11 +250,9 @@ function resolveZipPath(index: { all: string[]; byNorm: Map<string, string> }, r
   const norm = normalizeRef(ref);
   if (!norm) return null;
 
-  // Direct matches
   const direct = index.byNorm.get(norm);
   if (direct) return direct;
 
-  // Sometimes HTML uses relative segments
   const alt1 = norm.replace(/^resources\//, "");
   const alt2 = norm.replace(/^web_resources\//, "");
   const a1 = index.byNorm.get(alt1);
@@ -204,12 +260,10 @@ function resolveZipPath(index: { all: string[]; byNorm: Map<string, string> }, r
   const a2 = index.byNorm.get(alt2);
   if (a2) return a2;
 
-  // Fallback: basename match if unique
   const base = getBasename(norm).toLowerCase();
   const matches = index.all.filter((p) => getBasename(p).toLowerCase() === base);
   if (matches.length === 1) return matches[0];
 
-  // If multiple, pick the shortest path (usually closest)
   if (matches.length > 1) {
     matches.sort((x, y) => x.length - y.length);
     return matches[0];
@@ -227,7 +281,6 @@ async function rewriteHtmlWithZipResources(
   const warnings: string[] = [];
   if (!html) return { html, warnings };
 
-  // Parse as HTML fragment safely
   const doc = new DOMParser().parseFromString(`<div>${html}</div>`, "text/html");
   const root = doc.body.firstElementChild as HTMLElement | null;
   if (!root) return { html, warnings };
@@ -245,7 +298,6 @@ async function rewriteHtmlWithZipResources(
     }
 
     if (!isImagePath(resolved)) {
-      // Not an image file, leave it alone but warn
       warnings.push(`Image tag src resolved to a non image file: ${srcRaw}`);
       continue;
     }
@@ -265,7 +317,6 @@ async function rewriteHtmlWithZipResources(
     img.setAttribute("src", blobUrl);
   }
 
-  // Some QTI content may link files via anchor tags
   const links = Array.from(root.querySelectorAll("a"));
   for (const a of links) {
     const hrefRaw = a.getAttribute("href") ?? "";
@@ -292,17 +343,41 @@ async function rewriteHtmlWithZipResources(
 
 export async function loadAssessmentItems(file: File, qtiPath: string): Promise<LoadItemsResult> {
   const warnings: string[] = [];
-  const buf = await file.arrayBuffer();
-  const zip = await JSZip.loadAsync(buf);
 
-  const qtiFile = zip.file(qtiPath);
-  if (!qtiFile) throw new Error("QTI file not found in zip: " + qtiPath);
+  const buf = await file.arrayBuffer();
+  const outerZip = await JSZip.loadAsync(buf);
+
+  let zipToUse: JSZip = outerZip;
+  let actualQtiPath = qtiPath;
+
+  if (qtiPath.includes("::")) {
+    const parts = qtiPath.split("::");
+    const innerZipPath = parts.shift() ?? "";
+    const innerQtiPath = parts.join("::");
+
+    if (!innerZipPath || !innerQtiPath) {
+      throw new Error("Invalid bundle QTI path: " + qtiPath);
+    }
+
+    const innerZipFile = outerZip.file(innerZipPath);
+    if (!innerZipFile) {
+      throw new Error("Nested package not found in zip: " + innerZipPath);
+    }
+
+    const innerBuf = await innerZipFile.async("arraybuffer");
+    zipToUse = await JSZip.loadAsync(innerBuf);
+    actualQtiPath = innerQtiPath;
+  }
+
+  const qtiFile = zipToUse.file(actualQtiPath);
+  if (!qtiFile) throw new Error("QTI file not found in zip: " + actualQtiPath);
+
   const qtiText = await qtiFile.async("text");
 
   const doc = parseXml(qtiText);
   const itemEls = Array.from(doc.getElementsByTagName("item"));
 
-  const index = buildZipPathIndex(zip);
+  const index = buildZipPathIndex(zipToUse);
   const blobUrlCache = new Map<string, string>();
 
   const items: Item[] = [];
@@ -311,14 +386,14 @@ export async function loadAssessmentItems(file: File, qtiPath: string): Promise<
     const type = getQuestionType(it);
 
     let promptHtml = getPromptHtml(it);
-    const promptRewritten = await rewriteHtmlWithZipResources(promptHtml, zip, index, blobUrlCache);
+    const promptRewritten = await rewriteHtmlWithZipResources(promptHtml, zipToUse, index, blobUrlCache);
     promptHtml = promptRewritten.html;
     warnings.push(...promptRewritten.warnings);
 
     const rawChoices = getChoices(it);
     const choices: { id: string; html: string }[] = [];
     for (const c of rawChoices) {
-      const rewritten = await rewriteHtmlWithZipResources(c.html, zip, index, blobUrlCache);
+      const rewritten = await rewriteHtmlWithZipResources(c.html, zipToUse, index, blobUrlCache);
       warnings.push(...rewritten.warnings);
       choices.push({ id: c.id, html: rewritten.html });
     }
@@ -327,8 +402,6 @@ export async function loadAssessmentItems(file: File, qtiPath: string): Promise<
     items.push({ id, type, promptHtml, choices, correctChoiceIds });
   }
 
-  // Reduce duplicate warnings
   const uniqWarnings = Array.from(new Set(warnings));
-
   return { items, warnings: uniqWarnings };
 }
