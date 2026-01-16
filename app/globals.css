@@ -1,53 +1,116 @@
 :root{
-  --bg:#0b1020;
-  --panel:#121a33;
-  --panel2:#0f1730;
+  /* Dark page background */
+  --bgTop:#18255a;
+  --bg:#060913;
+
+  /* App surface */
+  --surface:#f7f3ea;
+  --surface2:#fffdf7;
+
+  /* Text colors */
   --text:#e9ecff;
   --muted:#b6bce6;
+
+  --textDark:#0b0f1a;
+  --mutedDark:#3a4256;
+
+  /* Accents */
+  --accent:#2b8cff;
+  --accentHover:#1f76f0;
+
   --border:rgba(255,255,255,0.12);
-  --good:#47d18c;
-  --warn:#ffcf5a;
-  --bad:#ff6b6b;
-  --link:#82b1ff;
+  --borderDark:rgba(11,15,26,0.14);
+
+  --good:#2f9e66;
+  --warn:#b06a00;
+  --bad:#c0362c;
 }
+
 *{box-sizing:border-box}
-html,body{height:100%}
+
+html,body{
+  height:100%;
+}
+
 body{
   margin:0;
+  min-height:100dvh;
   font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, "Apple Color Emoji","Segoe UI Emoji";
-  background: radial-gradient(1200px 800px at 20% 0%, #18255a 0%, var(--bg) 60%);
   color:var(--text);
+
+  /*
+    Prevent any tiling and make the background fade into black as the page scrolls.
+    The second layer gives the blue glow up top.
+  */
+  background-color:#000;
+  background-image:
+    linear-gradient(to bottom, rgba(0,0,0,0) 0%, #000 85%),
+    radial-gradient(1200px 800px at 20% 0%, var(--bgTop) 0%, var(--bg) 60%);
+  background-repeat:no-repeat;
+  background-attachment:fixed;
+  background-position:top center;
+  background-size:cover;
 }
-a{color:var(--link);text-decoration:none}
-a:hover{text-decoration:underline}
+
+a{color:var(--accent);text-decoration:none}
+a:hover{color:var(--accentHover);text-decoration:underline}
+
+/* Generic container utility if you still want it in places */
 .container{max-width:1100px;margin:0 auto;padding:28px}
+
 .h1{font-size:28px;font-weight:800;letter-spacing:0.2px}
 .sub{color:var(--muted);margin-top:6px}
 .row{display:flex;gap:16px;flex-wrap:wrap}
+
+/* App layout wrappers (used in /app layout below) */
+.appShell{max-width:1200px;margin:0 auto;padding:24px}
+.appPanel{
+  background:var(--surface);
+  color:var(--textDark);
+  border:1px solid var(--borderDark);
+  border-radius:18px;
+  padding:18px;
+  box-shadow: 0 18px 50px rgba(0,0,0,0.35);
+}
+
+/* Cards and content inside the app should be readable on the off white surface */
 .card{
-  background:linear-gradient(180deg,var(--panel) 0%, var(--panel2) 100%);
-  border:1px solid var(--border);
+  background:var(--surface2);
+  color:var(--textDark);
+  border:1px solid var(--borderDark);
   border-radius:16px;
   padding:16px;
-  box-shadow: 0 10px 30px rgba(0,0,0,0.25);
+  box-shadow: 0 10px 30px rgba(0,0,0,0.12);
 }
-.card h2{margin:0 0 10px 0;font-size:16px}
-.small{font-size:12px;color:var(--muted)}
+.card h2{margin:0 0 10px 0;font-size:16px;color:var(--textDark)}
+.small{font-size:12px;color:var(--mutedDark)}
+
 .btn{
-  border:1px solid var(--border);
-  background:rgba(255,255,255,0.06);
-  color:var(--text);
+  border:1px solid rgba(11,15,26,0.16);
+  background:rgba(255,255,255,0.65);
+  color:var(--textDark);
   border-radius:12px;
   padding:10px 12px;
-  font-weight:700;
+  font-weight:800;
   cursor:pointer;
 }
-.btn:hover{background:rgba(255,255,255,0.10)}
+.btn:hover{background:#fff}
 .btn:disabled{opacity:0.45;cursor:not-allowed}
-.pill{display:inline-flex;align-items:center;gap:8px;border:1px solid var(--border);padding:6px 10px;border-radius:999px;background:rgba(255,255,255,0.04)}
-.pill.good{border-color:rgba(71,209,140,0.35)}
-.pill.warn{border-color:rgba(255,207,90,0.35)}
-.pill.bad{border-color:rgba(255,107,107,0.35)}
+
+.pill{
+  display:inline-flex;
+  align-items:center;
+  gap:8px;
+  border:1px solid rgba(11,15,26,0.14);
+  padding:6px 10px;
+  border-radius:999px;
+  background:rgba(255,255,255,0.7);
+  color:var(--textDark);
+}
+.pill.good{border-color:rgba(47,158,102,0.30); color:var(--good)}
+.pill.warn{border-color:rgba(176,106,0,0.30); color:var(--warn)}
+.pill.bad{border-color:rgba(192,54,44,0.30); color:var(--bad)}
+
 .grid{
   display:grid;
   grid-template-columns: 1.2fr 1fr;
@@ -56,21 +119,53 @@ a:hover{text-decoration:underline}
 @media (max-width: 980px){
   .grid{grid-template-columns:1fr}
 }
+
 .table{width:100%;border-collapse:collapse}
-.table th,.table td{border-bottom:1px solid var(--border);padding:10px 8px;text-align:left;font-size:13px;vertical-align:top}
-.table th{color:var(--muted);font-weight:700}
+.table th,.table td{
+  border-bottom:1px solid rgba(11,15,26,0.12);
+  padding:10px 8px;
+  text-align:left;
+  font-size:13px;
+  vertical-align:top;
+  color:var(--textDark);
+}
+.table th{color:var(--mutedDark);font-weight:800}
+
 .kv{display:grid;grid-template-columns: 170px 1fr;gap:6px 12px;font-size:13px}
-.kv div:nth-child(odd){color:var(--muted)}
+.kv div:nth-child(odd){color:var(--mutedDark)}
 .code{font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace}
-.hr{height:1px;background:var(--border);margin:14px 0}
+.hr{height:1px;background:rgba(11,15,26,0.12);margin:14px 0}
+
 .question{
-  border:1px solid var(--border);
+  border:1px solid rgba(11,15,26,0.14);
   border-radius:12px;
   padding:12px;
-  background:rgba(255,255,255,0.03);
+  background:rgba(255,255,255,0.72);
+  color:var(--textDark);
 }
+
 .choice{display:flex;gap:10px;margin-top:6px}
-.choice .tag{min-width:28px;height:28px;display:inline-flex;align-items:center;justify-content:center;border-radius:8px;border:1px solid var(--border);color:var(--muted)}
-.choice.correct .tag{border-color:rgba(71,209,140,0.5);color:var(--good)}
-.notice{padding:12px;border-radius:12px;border:1px solid var(--border);background:rgba(255,255,255,0.03)}
+.choice .tag{
+  min-width:28px;
+  height:28px;
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  border-radius:8px;
+  border:1px solid rgba(11,15,26,0.14);
+  color:var(--mutedDark);
+  background:rgba(255,255,255,0.7);
+}
+.choice.correct .tag{
+  border-color:rgba(47,158,102,0.35);
+  color:var(--good);
+}
+
+.notice{
+  padding:12px;
+  border-radius:12px;
+  border:1px solid rgba(11,15,26,0.14);
+  background:rgba(255,255,255,0.72);
+  color:var(--textDark);
+}
 .notice b{display:block;margin-bottom:4px}
