@@ -400,12 +400,12 @@ export default function Page() {
         }
         .hr {
           height: 1px;
-          background: rgba(255, 255, 255, 0.10);
+          background: rgba(255, 255, 255, 0.1);
           margin: 12px 0;
         }
         .notice {
           background: rgba(0, 0, 0, 0.25);
-          border: 1px solid rgba(255, 255, 255, 0.10);
+          border: 1px solid rgba(255, 255, 255, 0.1);
           border-radius: 14px;
           padding: 12px;
           line-height: 1.35;
@@ -436,7 +436,7 @@ export default function Page() {
         }
         .table th,
         .table td {
-          border-bottom: 1px solid rgba(255, 255, 255, 0.10);
+          border-bottom: 1px solid rgba(255, 255, 255, 0.1);
           padding: 10px 8px;
           text-align: left;
           vertical-align: top;
@@ -452,7 +452,7 @@ export default function Page() {
           align-items: flex-start;
           padding: 10px;
           border-radius: 14px;
-          border: 1px solid rgba(255, 255, 255, 0.10);
+          border: 1px solid rgba(255, 255, 255, 0.1);
           background: rgba(255, 255, 255, 0.04);
           margin-top: 8px;
         }
@@ -477,7 +477,7 @@ export default function Page() {
           padding: 2px 6px;
           border-radius: 8px;
           background: rgba(0, 0, 0, 0.35);
-          border: 1px solid rgba(255, 255, 255, 0.10);
+          border: 1px solid rgba(255, 255, 255, 0.1);
         }
         input[type="file"] {
           width: 100%;
@@ -501,6 +501,60 @@ export default function Page() {
         .brandText {
           display: flex;
           flex-direction: column;
+        }
+
+        /* =========================================================
+           Preview-only accessible surface (only applies to Preview card)
+           ========================================================= */
+        .previewSurface {
+          background: rgba(247, 243, 234, 0.98);
+          color: #0b0f1a;
+          border: 1px solid rgba(11, 15, 26, 0.14);
+          box-shadow: 0 14px 50px rgba(0, 0, 0, 0.38);
+        }
+        .previewSurface h2 {
+          color: #0b0f1a;
+        }
+        .previewSurface .small {
+          opacity: 1;
+          color: rgba(11, 15, 26, 0.72);
+        }
+        .previewSurface .hr {
+          background: rgba(11, 15, 26, 0.12);
+        }
+        .previewSurface a {
+          color: #1f76f0;
+        }
+        .previewSurface a:hover {
+          text-decoration: underline;
+        }
+
+        .previewSurface .notice {
+          background: rgba(255, 255, 255, 0.78);
+          border: 1px solid rgba(11, 15, 26, 0.14);
+          color: #0b0f1a;
+        }
+
+        .previewSurface .choice {
+          border: 1px solid rgba(11, 15, 26, 0.14);
+          background: rgba(0, 0, 0, 0.03);
+          color: #0b0f1a;
+        }
+        .previewSurface .choice.correct {
+          border-color: rgba(31, 118, 240, 0.55);
+          background: rgba(31, 118, 240, 0.08);
+        }
+
+        .previewSurface .tag {
+          border: 1px solid rgba(11, 15, 26, 0.14);
+          background: rgba(255, 255, 255, 0.8);
+          color: rgba(11, 15, 26, 0.78);
+        }
+
+        .previewSurface .code {
+          background: rgba(0, 0, 0, 0.06);
+          border: 1px solid rgba(11, 15, 26, 0.14);
+          color: #0b0f1a;
         }
       `}</style>
 
@@ -687,7 +741,8 @@ export default function Page() {
           <div style={{ height: 16 }} />
 
           <div className="grid">
-            <div className="card" style={{ flex: "2 1 560px", minWidth: 320 }}>
+            {/* Only this card becomes off-white / black text */}
+            <div className="card previewSurface" style={{ flex: "2 1 560px", minWidth: 320 }}>
               <h2>Preview</h2>
 
               {itemWarnings.length > 0 && (
