@@ -1,11 +1,15 @@
 import {
   AlignmentType,
+  BorderStyle,
   Document,
   ImageRun,
   Packer,
   Paragraph,
+  Table,
+  TableCell,
+  TableRow,
   TextRun,
-  PageBreak,
+  WidthType,
 } from "docx";
 import * as XLSX from "xlsx";
 import type { Item } from "./types";
@@ -138,10 +142,7 @@ function idsToLetters(choices: { id: string }[], correctIds: string[]): string[]
   return letters;
 }
 
-function correctTextForLetters(
-  choices: { id: string; html?: string }[],
-  correctIds: string[]
-): string {
+function correctTextForLetters(choices: { id: string; html?: string }[], correctIds: string[]): string {
   if (!choices?.length || !correctIds?.length) return "";
   const parts: string[] = [];
   for (let i = 0; i < choices.length; i++) {
@@ -155,8 +156,33 @@ function correctTextForLetters(
   return parts.join(", ");
 }
 
+function questionBlock(paragraphs: Paragraph[]): Table {
+  return new Table({
+    width: { size: 100, type: WidthType.PERCENTAGE },
+    borders: {
+      top: { style: BorderStyle.NONE, size: 0, color: "FFFFFF" },
+      bottom: { style: BorderStyle.NONE, size: 0, color: "FFFFFF" },
+      left: { style: BorderStyle.NONE, size: 0, color: "FFFFFF" },
+      right: { style: BorderStyle.NONE, size: 0, color: "FFFFFF" },
+      insideHorizontal: { style: BorderStyle.NONE, size: 0, color: "FFFFFF" },
+      insideVertical: { style: BorderStyle.NONE, size: 0, color: "FFFFFF" },
+    },
+    rows: [
+      new TableRow({
+        cantSplit: true,
+        children: [
+          new TableCell({
+            margins: { top: 120, bottom: 120, left: 120, right: 120 },
+            children: paragraphs,
+          }),
+        ],
+      }),
+    ],
+  });
+}
+
 export async function exportDocx(title: string, items: Item[]): Promise<Blob> {
-  const children: Paragraph[] = [];
+  const children: (Paragraph | Table)[] = [];
   const exportedAt = new Date().toLocaleString();
 
   // Title
@@ -173,15 +199,20 @@ export async function exportDocx(title: string, items: Item[]): Promise<Blob> {
     })
   );
 
-  // Questions
+  // Questions (no forced page breaks)
   for (let i = 0; i < items.length; i++) {
     const q = items[i];
     const qNum = i + 1;
 
+    const qParas: Paragraph[] = [];
+
+    // Prompt
     const promptText = normalizeTextFromHtml(q.promptHtml || "");
-    children.push(
+    qParas.push(
       new Paragraph({
         spacing: { after: 120 },
+        keepLines: true,
+        keepNext: true,
         children: [
           new TextRun({ text: `${qNum}. `, bold: true }),
           new TextRun({ text: promptText || "(no prompt)" }),
@@ -194,17 +225,19 @@ export async function exportDocx(title: string, items: Item[]): Promise<Blob> {
     for (const img of promptImgs) {
       const run = await imageRunFromSrc(img.src);
       if (run) {
-        children.push(
+        qParas.push(
           new Paragraph({
             alignment: AlignmentType.CENTER,
             spacing: { after: 120 },
+            keepLines: true,
             children: [run],
           })
         );
       } else {
-        children.push(
+        qParas.push(
           new Paragraph({
             spacing: { after: 120 },
+            keepLines: true,
             children: [new TextRun({ text: "[Image omitted]", italics: true })],
           })
         );
@@ -219,9 +252,10 @@ export async function exportDocx(title: string, items: Item[]): Promise<Blob> {
         const isCorrect = q.correctChoiceIds?.includes(c.id);
         const choiceText = normalizeTextFromHtml(c.html || "");
 
-        children.push(
+        qParas.push(
           new Paragraph({
             spacing: { after: 60 },
+            keepLines: true,
             children: [
               new TextRun({ text: `${label}) `, bold: true }),
               new TextRun({ text: choiceText || "(blank)", bold: isCorrect }),
@@ -234,17 +268,19 @@ export async function exportDocx(title: string, items: Item[]): Promise<Blob> {
         for (const img of choiceImgs) {
           const run = await imageRunFromSrc(img.src);
           if (run) {
-            children.push(
+            qParas.push(
               new Paragraph({
                 alignment: AlignmentType.CENTER,
                 spacing: { after: 120 },
+                keepLines: true,
                 children: [run],
               })
             );
           } else {
-            children.push(
+            qParas.push(
               new Paragraph({
                 spacing: { after: 120 },
+                keepLines: true,
                 children: [new TextRun({ text: "[Image omitted]", italics: true })],
               })
             );
@@ -259,20 +295,24 @@ export async function exportDocx(title: string, items: Item[]): Promise<Blob> {
     const correctWithText = correctTextForLetters(q.choices || [], q.correctChoiceIds || []);
     const correctLine = correctWithText ? `Correct: ${correctWithText}` : `Correct: ${correctLabel}`;
 
-    children.push(
+    qParas.push(
       new Paragraph({
-        spacing: { after: 240 },
+        spacing: { after: 0 },
+        keepLines: true,
         children: [new TextRun({ text: correctLine, italics: true })],
       })
     );
 
-    // Page break between questions (keeps things clean in Word)
+    // Wrap question in a non-splitting row so Word keeps it together when possible
+    children.push(questionBlock(qParas));
+
+    // Spacing between questions (no hard page break)
     if (i < items.length - 1) {
-      children.push(new Paragraph({ children: [new PageBreak()] }));
+      children.push(new Paragraph({ spacing: { after: 240 } }));
     }
   }
 
-  // Answer Key (end)
+  // Answer Key (start on new page like before)
   children.push(
     new Paragraph({
       pageBreakBefore: true,
