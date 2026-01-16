@@ -88,55 +88,122 @@ function cleanBundleLabel(path: string): string {
   return noExt.replace(/_+/g, " ").trim() || noExt;
 }
 
+function findManifestPath(zip: JSZip): string | null {
+  if (zip.file("imsmanifest.xml")) return "imsmanifest.xml";
+
+  const hit = Object.keys(zip.files).find((p) => {
+    const lower = p.toLowerCase();
+    return !zip.files[p].dir && (lower === "imsmanifest.xml" || lower.endsWith("/imsmanifest.xml"));
+  });
+
+  return hit ?? null;
+}
+
+function normalizeHrefForZip(raw: string): string {
+  let s = (raw ?? "").trim();
+  s = s.split("#")[0].split("?")[0];
+  s = s.replace(/\\/g, "/");
+  try {
+    s = decodeURIComponent(s);
+  } catch {}
+  if (s.startsWith("$IMS-CC-FILEBASE$/")) s = s.slice("$IMS-CC-FILEBASE$/".length);
+  s = s.replace(/^\.\//, "");
+  s = s.replace(/^\//, "");
+  return s;
+}
+
+function looksLikeQtiXml(xmlText: string): boolean {
+  const t = xmlText.toLowerCase();
+  if (t.includes("<questestinterop")) return true;
+  if (t.includes("<assessment") && t.includes("<item")) return true;
+  if (t.includes("imsqti")) return true;
+  return false;
+}
+
 async function parseSinglePackageZip(zip: JSZip, qtiPathPrefix: string | null, label: string | null): Promise<ParseResult> {
   const warnings: string[] = [];
 
-  const manifestFile = zip.file("imsmanifest.xml");
-  if (!manifestFile) {
+  const manifestPath = findManifestPath(zip);
+  if (!manifestPath) {
     throw new Error("imsmanifest.xml not found.");
   }
 
-  const manifestText = await manifestFile.async("text");
+  const manifestText = await zip.file(manifestPath)!.async("text");
   const manifestDoc = parseXml(manifestText);
 
   const resources = Array.from(manifestDoc.getElementsByTagName("resource"));
-  const qtiResources = resources.filter((r) => r.getAttribute("type") === "imsqti_xmlv1p2");
 
-  if (qtiResources.length === 0) {
-    throw new Error("No QTI resources found in manifest.");
-  }
+  const qtiResources = resources.filter((r) => {
+    const type = (r.getAttribute("type") ?? "").toLowerCase();
+    return type.includes("qti");
+  });
 
   const assessments: Assessment[] = [];
 
-  for (const res of qtiResources) {
-    const files = Array.from(res.getElementsByTagName("file"));
-    const href = files[0]?.getAttribute("href") ?? "";
-    if (!href) continue;
-
-    const qtiFile = zip.file(href);
-    if (!qtiFile) {
-      warnings.push((label ? `${label}: ` : "") + "Manifest referenced a file that was not found: " + href);
-      continue;
+  const pushAssessment = (assessment: Assessment) => {
+    if (label) {
+      assessment.title = `${label} | ${assessment.title}`;
+      assessment.id = `${label}:${assessment.id}`;
     }
+    assessments.push(assessment);
+  };
 
-    const qtiText = await qtiFile.async("text");
+  if (qtiResources.length > 0) {
+    for (const res of qtiResources) {
+      const files = Array.from(res.getElementsByTagName("file"));
 
-    const idFromPath = href.split("/")[0] || href;
+      for (const f of files) {
+        const hrefRaw = f.getAttribute("href") ?? "";
+        const href = normalizeHrefForZip(hrefRaw);
+        if (!href) continue;
+        if (!href.toLowerCase().endsWith(".xml")) continue;
 
-    const qtiPath = qtiPathPrefix ? `${qtiPathPrefix}::${href}` : href;
+        const qtiFile = zip.file(href);
+        if (!qtiFile) {
+          warnings.push((label ? `${label}: ` : "") + "Manifest referenced a file that was not found: " + href);
+          continue;
+        }
 
-    try {
-      const assessment = parseQtiAssessment(qtiText, idFromPath, qtiPath);
+        const qtiText = await qtiFile.async("text");
+        if (!looksLikeQtiXml(qtiText)) continue;
 
-      if (label) {
-        assessment.title = `${label} | ${assessment.title}`;
-        assessment.id = `${label}:${assessment.id}`;
+        const idFromPath = href.split("/")[0] || href;
+        const qtiPath = qtiPathPrefix ? `${qtiPathPrefix}::${href}` : href;
+
+        try {
+          const assessment = parseQtiAssessment(qtiText, idFromPath, qtiPath);
+          pushAssessment(assessment);
+        } catch (e: any) {
+          warnings.push((label ? `${label}: ` : "") + "Could not parse assessment " + href + ": " + (e?.message ?? String(e)));
+        }
       }
-
-      assessments.push(assessment);
-    } catch (e: any) {
-      warnings.push((label ? `${label}: ` : "") + "Could not parse assessment " + href + ": " + (e?.message ?? String(e)));
     }
+  }
+
+  if (assessments.length === 0) {
+    const xmlPaths = Object.keys(zip.files).filter((p) => {
+      const lower = p.toLowerCase();
+      return !zip.files[p].dir && lower.endsWith(".xml") && !lower.endsWith("imsmanifest.xml");
+    });
+
+    for (const p of xmlPaths) {
+      try {
+        const xmlText = await zip.file(p)!.async("text");
+        if (!looksLikeQtiXml(xmlText)) continue;
+
+        const idFromPath = p.split("/")[0] || p;
+        const qtiPath = qtiPathPrefix ? `${qtiPathPrefix}::${p}` : p;
+
+        const assessment = parseQtiAssessment(xmlText, idFromPath, qtiPath);
+        pushAssessment(assessment);
+      } catch (e: any) {
+        warnings.push((label ? `${label}: ` : "") + "Could not parse xml " + p + ": " + (e?.message ?? String(e)));
+      }
+    }
+  }
+
+  if (assessments.length === 0) {
+    throw new Error("No QTI resources found in manifest.");
   }
 
   assessments.sort((a, b) => a.title.localeCompare(b.title));
@@ -145,18 +212,15 @@ async function parseSinglePackageZip(zip: JSZip, qtiPathPrefix: string | null, l
 
 function listNestedZipPaths(zip: JSZip): string[] {
   const all = Object.keys(zip.files);
-  return all
-    .filter((p) => p.toLowerCase().endsWith(".zip"))
-    .filter((p) => !zip.files[p].dir);
+  return all.filter((p) => p.toLowerCase().endsWith(".zip")).filter((p) => !zip.files[p].dir);
 }
 
 export async function parseCanvasQtiZip(file: File): Promise<ParseResult> {
   const buf = await file.arrayBuffer();
   const outerZip = await JSZip.loadAsync(buf);
 
-  const rootManifest = outerZip.file("imsmanifest.xml");
-
-  if (rootManifest) {
+  const outerManifestPath = findManifestPath(outerZip);
+  if (outerManifestPath) {
     return parseSinglePackageZip(outerZip, null, null);
   }
 
