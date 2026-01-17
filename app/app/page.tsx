@@ -35,6 +35,10 @@ export default function Page() {
   const [error, setError] = useState("");
   const [notice, setNotice] = useState<string>("");
 
+  // Convert state
+  const [convertText, setConvertText] = useState<string>("");
+  const [convertBusy, setConvertBusy] = useState<boolean>(false);
+
   const formatDate = (iso: string | null) => {
     if (!iso) return "";
     try {
@@ -85,7 +89,6 @@ export default function Page() {
       setUserEmail(email);
       setAccessToken(token);
 
-      // Important: TypeScript needs an explicit guard that session exists
       if (!token || !session?.user?.id) {
         setSubStatus("");
         setSubPeriodEnd(null);
@@ -337,6 +340,42 @@ export default function Page() {
     }
   }
 
+  async function convertToQti(doReview: boolean) {
+    if (!accessToken) {
+      alert("Please log in first.");
+      return;
+    }
+    if (!isPaid) {
+      alert("Subscription required.");
+      return;
+    }
+    if (!convertText.trim()) {
+      alert("Paste questions first.");
+      return;
+    }
+
+    setConvertBusy(true);
+    try {
+      const res = await fetch("/api/convert", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ access_token: accessToken, raw: convertText, do_review: doReview }),
+      });
+
+      if (!res.ok) {
+        const j = await res.json().catch(() => null);
+        throw new Error(j?.error ?? `Convert failed (${res.status})`);
+      }
+
+      const blob = await res.blob();
+      downloadBlob(blob, "canvas_qti.zip");
+    } catch (e: any) {
+      alert(e?.message ?? "Convert failed");
+    } finally {
+      setConvertBusy(false);
+    }
+  }
+
   return (
     <main className="wrap">
       <style jsx global>{`
@@ -503,9 +542,7 @@ export default function Page() {
           flex-direction: column;
         }
 
-        /* =========================================================
-           Preview-only accessible surface (only applies to Preview card)
-           ========================================================= */
+        /* Preview-only accessible surface */
         .previewSurface {
           background: rgba(247, 243, 234, 0.98);
           color: #0b0f1a;
@@ -741,7 +778,6 @@ export default function Page() {
           <div style={{ height: 16 }} />
 
           <div className="grid">
-            {/* Only this card becomes off-white / black text */}
             <div className="card previewSurface" style={{ flex: "2 1 560px", minWidth: 320 }}>
               <h2>Preview</h2>
 
@@ -794,53 +830,101 @@ export default function Page() {
               ))}
             </div>
 
-            <div className="card" style={{ flex: "1 1 320px", minWidth: 300 }}>
-              <h2>Export</h2>
-              <div className="small">Files are generated in your browser.</div>
+            {/* Right column with stacked cards */}
+            <div style={{ flex: "1 1 320px", minWidth: 300, display: "flex", flexDirection: "column", gap: 16 }}>
+              <div className="card">
+                <h2>Export</h2>
+                <div className="small">Files are generated in your browser.</div>
 
-              <div style={{ height: 12 }} />
+                <div style={{ height: 12 }} />
 
-              <button className="btn" disabled={!isPaid || loading || items.length === 0} onClick={doExportDocx}>
-                Export Word (.docx)
-              </button>
+                <button className="btn" disabled={!isPaid || loading || items.length === 0} onClick={doExportDocx}>
+                  Export Word (.docx)
+                </button>
 
-              <div style={{ height: 10 }} />
+                <div style={{ height: 10 }} />
 
-              <button className="btn" disabled={!isPaid || loading || items.length === 0} onClick={doExportXlsx}>
-                Export Excel (.xlsx)
-              </button>
+                <button className="btn" disabled={!isPaid || loading || items.length === 0} onClick={doExportXlsx}>
+                  Export Excel (.xlsx)
+                </button>
 
-              {!isPaid && (
-                <>
-                  <div style={{ height: 12 }} />
-                  <div className="notice">
-                    <b>Locked</b>
-                    <div style={{ marginTop: 6 }}>Exports are unlocked with a subscription.</div>
-                  </div>
-                </>
-              )}
-
-              {isPaid && (
-                <>
-                  <div style={{ height: 12 }} />
-                  <div className="notice">
-                    <b>Unlocked</b>
-                    <div className="small" style={{ marginTop: 6 }}>
-                      Active subscription detected.
+                {!isPaid && (
+                  <>
+                    <div style={{ height: 12 }} />
+                    <div className="notice">
+                      <b>Locked</b>
+                      <div style={{ marginTop: 6 }}>Exports are unlocked with a subscription.</div>
                     </div>
-                  </div>
-                </>
-              )}
+                  </>
+                )}
 
-              <div className="hr" />
+                {isPaid && (
+                  <>
+                    <div style={{ height: 12 }} />
+                    <div className="notice">
+                      <b>Unlocked</b>
+                      <div className="small" style={{ marginTop: 6 }}>
+                        Active subscription detected.
+                      </div>
+                    </div>
+                  </>
+                )}
 
-              <div className="small">
-                Next steps:
-                <ul style={{ margin: "8px 0 0 18px" }}>
-                  <li>Embed images in Word exports</li>
-                  <li>Add New Quizzes support</li>
-                  <li>Improve bank referenced guidance</li>
-                </ul>
+                <div className="hr" />
+
+                <div className="small">
+                  Next steps:
+                  <ul style={{ margin: "8px 0 0 18px" }}>
+                    <li>Embed images in Word exports</li>
+                    <li>Add New Quizzes support</li>
+                    <li>Improve bank referenced guidance</li>
+                  </ul>
+                </div>
+              </div>
+
+              <div className="card">
+                <h2>Convert to Canvas QTI</h2>
+                <div className="small">Paste questions in almost any format. We will structure them and export a QTI zip.</div>
+
+                <div style={{ height: 10 }} />
+
+                <textarea
+                  value={convertText}
+                  onChange={(e) => setConvertText(e.target.value)}
+                  placeholder={"Paste questions here..."}
+                  style={{
+                    width: "100%",
+                    minHeight: 160,
+                    padding: 10,
+                    borderRadius: 12,
+                    border: "1px solid rgba(255, 255, 255, 0.14)",
+                    background: "rgba(255, 255, 255, 0.06)",
+                    color: "#e7e9ee",
+                    resize: "vertical",
+                  }}
+                />
+
+                <div style={{ height: 10 }} />
+
+                <button className="btn" disabled={!isPaid || convertBusy} onClick={() => void convertToQti(false)}>
+                  Export QTI zip
+                </button>
+
+                <div style={{ height: 10 }} />
+
+                <button className="btn" disabled={!isPaid || convertBusy} onClick={() => void convertToQti(true)}>
+                  Export with one review pass
+                </button>
+
+                {!isPaid && (
+                  <>
+                    <div style={{ height: 12 }} />
+                    <div className="notice">
+                      <b>Locked</b>
+                      <div style={{ marginTop: 6 }}>Conversion is available with a subscription.</div>
+                    </div>
+                  </>
+                )}
               </div>
             </div>
           </div>

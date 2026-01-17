@@ -9,6 +9,14 @@
   --warn:#ffcf5a;
   --bad:#ff6b6b;
   --link:#82b1ff;
+
+  /* New: accessible quiz surface colors */
+  --quizSurface:#f7f3ea;
+  --quizSurface2:#fffdf7;
+  --quizText:#0b0f1a;
+  --quizMuted:#3a4256;
+  --quizBorder:rgba(11,15,26,0.14);
+  --quizLink:#1f76f0;
 }
 *{box-sizing:border-box}
 html,body{height:100%}
@@ -74,3 +82,46 @@ a:hover{text-decoration:underline}
 .choice.correct .tag{border-color:rgba(71,209,140,0.5);color:var(--good)}
 .notice{padding:12px;border-radius:12px;border:1px solid var(--border);background:rgba(255,255,255,0.03)}
 .notice b{display:block;margin-bottom:4px}
+
+/* ================================
+   NEW: Only affects the quiz preview container when you add className="quizSurface"
+   ================================ */
+.quizSurface{
+  background: var(--quizSurface);
+  color: var(--quizText);
+  border: 1px solid var(--quizBorder);
+  border-radius: 16px;
+  box-shadow: 0 14px 40px rgba(0,0,0,0.30);
+}
+
+.quizSurface a{
+  color: var(--quizLink);
+}
+.quizSurface a:hover{
+  text-decoration: underline;
+}
+
+/* Override existing dark UI elements INSIDE the quiz surface for readability */
+.quizSurface .small{ color: var(--quizMuted); }
+.quizSurface .hr{ background: rgba(11,15,26,0.12); }
+
+.quizSurface .question{
+  background: rgba(0,0,0,0.03);
+  border: 1px solid rgba(11,15,26,0.14);
+}
+
+.quizSurface .choice .tag{
+  border: 1px solid rgba(11,15,26,0.14);
+  color: var(--quizMuted);
+  background: rgba(255,255,255,0.70);
+}
+
+.quizSurface .choice.correct .tag{
+  border-color: rgba(71,209,140,0.55);
+  color: #1b6b3f;
+}
+
+.quizSurface .notice{
+  background: rgba(255,255,255,0.72);
+  border: 1px solid rgba(11,15,26,0.14);
+}
