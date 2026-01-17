@@ -1,4 +1,4 @@
-type OpenAiUsage = { input_tokens?: number; output_tokens?: number };
+type OpenAiUsage = { input_tokens: number; output_tokens: number };
 
 export type ConvertResult = {
   items: Array<{
@@ -88,6 +88,11 @@ export async function openAiConvertToJson(args: {
     throw new Error("OpenAI did not return valid JSON");
   }
 
-  const usage: OpenAiUsage = json?.usage ?? {};
+  const u = json?.usage ?? {};
+  const usage: OpenAiUsage = {
+    input_tokens: Number(u.input_tokens ?? 0),
+    output_tokens: Number(u.output_tokens ?? 0),
+  };
+
   return { data, usage };
 }

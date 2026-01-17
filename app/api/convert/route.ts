@@ -15,7 +15,10 @@ function monthStartUtc(d = new Date()) {
 
 export async function POST(req: Request) {
   try {
-    const { access_token, raw, do_review } = await req.json();
+    const body = await req.json();
+    const access_token = body?.access_token;
+    const raw = body?.raw;
+    const doReview = Boolean(body?.do_review);
 
     if (!access_token || typeof access_token !== "string") {
       return NextResponse.json({ error: "Missing access token" }, { status: 401 });
@@ -38,12 +41,7 @@ export async function POST(req: Request) {
 
     const userId = userData.user.id;
 
-    // Subscription gate
-    const { data: subRow } = await supabase
-      .from("subscriptions")
-      .select("status")
-      .eq("user_id", userId)
-      .maybeSingle();
+    const { data: subRow } = await supabase.from("subscriptions").select("status").eq("user_id", userId).maybeSingle();
 
     const status = (subRow as any)?.status ?? "";
     const isPaid = status === "active" || status === "trialing";
@@ -51,7 +49,6 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Subscription required" }, { status: 402 });
     }
 
-    // Usage and quota
     const periodStart = monthStartUtc();
     const periodKey = periodStart.toISOString().slice(0, 10);
 
@@ -71,20 +68,19 @@ export async function POST(req: Request) {
     if (usedQuestions >= maxQuestions) {
       return NextResponse.json({ error: "Monthly question limit reached" }, { status: 429 });
     }
-    if (do_review && usedReviews >= maxReviews) {
+    if (doReview && usedReviews >= maxReviews) {
       return NextResponse.json({ error: "Monthly review limit reached" }, { status: 429 });
     }
 
-    // Convert pass
     const convert = await openAiConvertToJson({ raw, mode: "convert" });
 
-    // Optional review pass
     let final = convert.data;
     let reviewUsage = { input_tokens: 0, output_tokens: 0 };
-    if (do_review) {
+
+    if (doReview) {
       const review = await openAiConvertToJson({ raw: JSON.stringify(convert.data), mode: "review" });
       final = review.data;
-      reviewUsage = review.usage ?? reviewUsage;
+      reviewUsage = review.usage;
     }
 
     const items = final.items ?? [];
@@ -94,19 +90,17 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "This job would exceed your monthly limit" }, { status: 429 });
     }
 
-    // Build QTI zip
     const zipBytes = await buildQtiZip(final.title || "Quiz", items);
 
-    // Update usage
-    const inputTokens = (convert.usage?.input_tokens ?? 0) + (reviewUsage.input_tokens ?? 0);
-    const outputTokens = (convert.usage?.output_tokens ?? 0) + (reviewUsage.output_tokens ?? 0);
+    const inputTokens = convert.usage.input_tokens + reviewUsage.input_tokens;
+    const outputTokens = convert.usage.output_tokens + reviewUsage.output_tokens;
 
     await supabase.from("conversion_usage").upsert(
       {
         user_id: userId,
         period_start: periodKey,
         questions_converted: usedQuestions + questionCount,
-        review_passes: usedReviews + (do_review ? 1 : 0),
+        review_passes: usedReviews + (doReview ? 1 : 0),
         input_tokens: ((usageRow as any)?.input_tokens ?? 0) + inputTokens,
         output_tokens: ((usageRow as any)?.output_tokens ?? 0) + outputTokens,
         updated_at: new Date().toISOString(),
