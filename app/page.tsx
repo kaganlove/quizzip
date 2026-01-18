@@ -65,7 +65,7 @@ export default function LandingPage() {
               </Link>
             </div>
 
-            {/* Feature list instead of pills */}
+            {/* Plain list: checks + text (no pill/cards) */}
             <ul className="featureList" aria-label="Key benefits">
               <li>Free QTI preview</li>
               <li>Unlimited formatted import</li>
@@ -283,12 +283,13 @@ const css = `
     overflow:hidden;
   }
 
+  /* Reverted glow: blue + green (and a touch of cyan), like before */
   .bgGlow{
     position:absolute;
     inset:-200px;
     background:
-      radial-gradient(1200px 600px at 18% 10%, rgba(168,85,247,0.28), transparent 60%),
-      radial-gradient(1100px 600px at 82% 30%, rgba(236,72,153,0.18), transparent 55%),
+      radial-gradient(1200px 600px at 18% 10%, rgba(99,102,241,0.28), transparent 60%),
+      radial-gradient(1100px 600px at 82% 30%, rgba(34,197,94,0.18), transparent 55%),
       radial-gradient(900px 520px at 55% 80%, rgba(56,189,248,0.10), transparent 60%);
     pointer-events:none;
   }
@@ -337,7 +338,7 @@ const css = `
 
   .actions{display:flex; gap:10px; align-items:center;}
 
-  /* Buttons */
+  /* Buttons keep purple accents */
   .btn{
     display:inline-flex;
     align-items:center;
@@ -426,27 +427,23 @@ const css = `
     flex-wrap:wrap;
   }
 
-  /* Feature list replaces pills */
+  /* Feature list: NO pill backgrounds, just check + text */
   .featureList{
     margin-top:18px;
     padding-left:0;
     list-style:none;
     display:grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap:10px 16px;
+    gap:10px 22px;
     max-width:720px;
   }
   .featureList li{
     display:flex;
-    align-items:flex-start;
+    align-items:center;
     gap:10px;
-    padding:10px 12px;
-    border-radius:14px;
-    border:1px solid rgba(255,255,255,0.12);
-    background:rgba(255,255,255,0.05);
-    font-size:13px;
-    font-weight:850;
-    opacity:0.92;
+    font-size:14px;
+    font-weight:900;
+    opacity:0.90;
     line-height:1.25;
   }
   .featureList li::before{
@@ -456,13 +453,12 @@ const css = `
     justify-content:center;
     width:22px;
     height:22px;
-    border-radius:10px;
+    border-radius:999px;
     background: rgba(168,85,247,0.18);
-    border: 1px solid rgba(168,85,247,0.35);
+    border: 1px solid rgba(168,85,247,0.38);
     color: rgba(255,255,255,0.96);
     font-weight:1000;
     flex:0 0 auto;
-    margin-top:0px;
   }
 
   .trustRow{
