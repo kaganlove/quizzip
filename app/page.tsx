@@ -15,9 +15,7 @@ export default function LandingPage() {
         {/* Header */}
         <header className="topbar">
           <div className="brand">
-            <div className="logo" aria-hidden="true">
-              <img className="logoImg" src="/quizzip-logo.png" alt="" />
-            </div>
+            <img className="logoImg" src="/quizzip-logo.png" alt="Quizzip logo" />
             <div className="brandText">
               <div className="brandName">Quizzip</div>
               <div className="brandSub">Canvas quiz tools that just work</div>
@@ -65,7 +63,7 @@ export default function LandingPage() {
               </Link>
             </div>
 
-            {/* Plain list: checks + text (no pill/cards) */}
+            {/* Plain list: checks + text */}
             <ul className="featureList" aria-label="Key benefits">
               <li>Free QTI preview</li>
               <li>Unlimited formatted import</li>
@@ -283,7 +281,6 @@ const css = `
     overflow:hidden;
   }
 
-  /* Reverted glow: blue + green (and a touch of cyan), like before */
   .bgGlow{
     position:absolute;
     inset:-200px;
@@ -309,20 +306,22 @@ const css = `
     margin-bottom:42px;
   }
 
-  .brand{display:flex; align-items:center; gap:10px;}
-  .logo{
-    width:44px; height:44px;
-    border-radius:12px;
-    background:rgba(255,255,255,0.06);
-    border:1px solid rgba(255,255,255,0.14);
-    display:grid;
-    place-items:center;
-    overflow:hidden;
+  /* Brand: larger logo, no pill container */
+  .brand{
+    display:flex;
+    align-items:center;
+    gap:14px;
   }
-  .logoImg{width:34px; height:34px; object-fit:contain; display:block;}
+  .logoImg{
+    width:64px;
+    height:64px;
+    object-fit:contain;
+    display:block;
+    filter: drop-shadow(0 10px 22px rgba(0,0,0,0.35));
+  }
 
-  .brandText{display:flex; flex-direction:column; gap:2px;}
-  .brandName{font-weight:900; font-size:18px;}
+  .brandText{display:flex; flex-direction:column; gap:3px;}
+  .brandName{font-weight:1000; font-size:20px; letter-spacing:-0.2px;}
   .brandSub{opacity:0.70; font-size:12px;}
 
   .nav{display:flex; gap:16px; align-items:center;}
@@ -338,7 +337,6 @@ const css = `
 
   .actions{display:flex; gap:10px; align-items:center;}
 
-  /* Buttons keep purple accents */
   .btn{
     display:inline-flex;
     align-items:center;
@@ -427,7 +425,6 @@ const css = `
     flex-wrap:wrap;
   }
 
-  /* Feature list: NO pill backgrounds, just check + text */
   .featureList{
     margin-top:18px;
     padding-left:0;
@@ -666,5 +663,6 @@ const css = `
     .card{padding:18px;}
     .actions{gap:8px;}
     .btn{padding:10px 12px;}
+    .logoImg{width:56px; height:56px;}
   }
 `;
