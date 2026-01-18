@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { openAiConvertToJson } from "../../../lib/openai";
 import { buildQtiZip } from "../../../lib/qtiWrite";
+import { parseStrictQuizText } from "../../../lib/textParser";
 
 function requireEnv(name: string) {
   const v = process.env[name];
@@ -72,13 +73,25 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Monthly review limit reached" }, { status: 429 });
     }
 
-    const convert = await openAiConvertToJson({ raw, mode: "convert" });
+    // 1) Try strict local parsing first
+    const strict = parseStrictQuizText(raw);
 
-    let final = convert.data;
+    let final: any;
+    let convertUsage = { input_tokens: 0, output_tokens: 0 };
     let reviewUsage = { input_tokens: 0, output_tokens: 0 };
 
+    if (strict.quiz) {
+      final = strict.quiz;
+    } else {
+      // 2) Fall back to OpenAI when input is not in the strict formats
+      const convert = await openAiConvertToJson({ raw, mode: "convert" });
+      final = convert.data;
+      convertUsage = convert.usage;
+    }
+
+    // Optional review pass (even for strict parsed content)
     if (doReview) {
-      const review = await openAiConvertToJson({ raw: JSON.stringify(convert.data), mode: "review" });
+      const review = await openAiConvertToJson({ raw: JSON.stringify(final), mode: "review" });
       final = review.data;
       reviewUsage = review.usage;
     }
@@ -86,14 +99,18 @@ export async function POST(req: Request) {
     const items = final.items ?? [];
     const questionCount = items.length;
 
+    if (questionCount <= 0) {
+      return NextResponse.json({ error: "No questions detected." }, { status: 400 });
+    }
+
     if (usedQuestions + questionCount > maxQuestions) {
       return NextResponse.json({ error: "This job would exceed your monthly limit" }, { status: 429 });
     }
 
     const zipBytes = await buildQtiZip(final.title || "Quiz", items);
 
-    const inputTokens = convert.usage.input_tokens + reviewUsage.input_tokens;
-    const outputTokens = convert.usage.output_tokens + reviewUsage.output_tokens;
+    const inputTokens = convertUsage.input_tokens + reviewUsage.input_tokens;
+    const outputTokens = convertUsage.output_tokens + reviewUsage.output_tokens;
 
     await supabase.from("conversion_usage").upsert(
       {

@@ -1,7 +1,13 @@
 import JSZip from "jszip";
 
 type ConvertItem = {
-  type: "multiple_choice_single" | "multiple_choice_multiple" | "true_false" | "short_answer" | "essay";
+  type:
+    | "multiple_choice_single"
+    | "multiple_choice_multiple"
+    | "true_false"
+    | "short_answer"
+    | "essay"
+    | "file_upload";
   promptText: string;
   choices?: Array<{ text: string; correct?: boolean }>;
   correctText?: string;
@@ -20,11 +26,8 @@ function qtiItemXml(i: number, item: ConvertItem) {
   const ident = `ITEM_${i + 1}`;
 
   if (item.type === "true_false") {
-    const choices = [
-      { text: "True", correct: (item.choices ?? []).some(c => c.correct && c.text.toLowerCase().includes("true")) },
-      { text: "False", correct: (item.choices ?? []).some(c => c.correct && c.text.toLowerCase().includes("false")) },
-    ];
-    const correctId = choices[0].correct ? "A" : "B";
+    const correctTrue = (item.choices ?? []).some(c => c.correct && c.text.toLowerCase() === "true");
+    const correctId = correctTrue ? "A" : "B";
 
     return `
 <item ident="${ident}" title="${esc("Question " + (i + 1))}">
@@ -48,11 +51,18 @@ function qtiItemXml(i: number, item: ConvertItem) {
 `.trim();
   }
 
-  if (item.type === "short_answer" || item.type === "essay") {
+  if (item.type === "short_answer" || item.type === "essay" || item.type === "file_upload") {
+    // Canvas may not import "file_upload" perfectly via minimal QTI 1.2,
+    // so we map it to an essay style response for now.
+    const prompt =
+      item.type === "file_upload"
+        ? `${item.promptText}\n\n(Upload a file.)`
+        : item.promptText;
+
     return `
 <item ident="${ident}" title="${esc("Question " + (i + 1))}">
   <presentation>
-    <material><mattext texttype="text/plain">${esc(item.promptText)}</mattext></material>
+    <material><mattext texttype="text/plain">${esc(prompt)}</mattext></material>
     <response_str ident="response1" rcardinality="Single">
       <render_fib/>
     </response_str>
@@ -64,14 +74,22 @@ function qtiItemXml(i: number, item: ConvertItem) {
   const choices = item.choices ?? [];
   const ids = choices.map((_, idx) => String.fromCharCode(65 + idx));
   const correctIds = ids.filter((id, idx) => !!choices[idx]?.correct);
+  const incorrectIds = ids.filter((id, idx) => !choices[idx]?.correct);
 
   const cardinality = item.type === "multiple_choice_multiple" ? "Multiple" : "Single";
-  const condition =
-    item.type === "multiple_choice_multiple"
-      ? correctIds
-          .map(id => `<varequal respident="response1">${id}</varequal>`)
-          .join("")
-      : `<varequal respident="response1">${(correctIds[0] ?? ids[0])}</varequal>`;
+
+  let conditionVar = "";
+  if (item.type === "multiple_choice_multiple") {
+    // Require all correct selections AND no incorrect selections
+    const correctChecks = correctIds.map(id => `<varequal respident="response1">${id}</varequal>`).join("");
+    const incorrectChecks = incorrectIds
+      .map(id => `<not><varequal respident="response1">${id}</varequal></not>`)
+      .join("");
+
+    conditionVar = `<and>${correctChecks}${incorrectChecks}</and>`;
+  } else {
+    conditionVar = `<varequal respident="response1">${(correctIds[0] ?? ids[0])}</varequal>`;
+  }
 
   const render = ids
     .map((id, idx) => {
@@ -93,7 +111,7 @@ function qtiItemXml(i: number, item: ConvertItem) {
   <resprocessing>
     <outcomes><decvar maxvalue="1" minvalue="0" varname="SCORE" vartype="Decimal"/></outcomes>
     <respcondition continue="No">
-      <conditionvar>${condition}</conditionvar>
+      <conditionvar>${conditionVar}</conditionvar>
       <setvar action="Set" varname="SCORE">1</setvar>
     </respcondition>
   </resprocessing>
@@ -134,6 +152,6 @@ export async function buildQtiZip(title: string, items: ConvertItem[]) {
   const zip = new JSZip();
   zip.file("imsmanifest.xml", imsManifestXml());
   zip.file("assessment.xml", qtiAssessmentXml(title, items));
-  const blob = await zip.generateAsync({ type: "uint8array" });
-  return blob;
+  const bytes = await zip.generateAsync({ type: "uint8array" });
+  return bytes;
 }

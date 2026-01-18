@@ -2,7 +2,13 @@ type OpenAiUsage = { input_tokens: number; output_tokens: number };
 
 export type ConvertResult = {
   items: Array<{
-    type: "multiple_choice_single" | "multiple_choice_multiple" | "true_false" | "short_answer" | "essay";
+    type:
+      | "multiple_choice_single"
+      | "multiple_choice_multiple"
+      | "true_false"
+      | "short_answer"
+      | "essay"
+      | "file_upload";
     promptText: string;
     choices?: Array<{ text: string; correct?: boolean }>;
     correctText?: string;
@@ -33,11 +39,9 @@ function extractOutputText(resp: any): string {
     const content = item?.content;
     if (!Array.isArray(content)) continue;
 
-    // Most common: { type: "output_text", text: "..." }
     const c1 = content.find((c: any) => c?.type === "output_text" && typeof c?.text === "string" && c.text.trim());
     if (c1?.text) return c1.text;
 
-    // Some variants: { type: "text", text: "..." }
     const c2 = content.find((c: any) => c?.type === "text" && typeof c?.text === "string" && c.text.trim());
     if (c2?.text) return c2.text;
   }
@@ -50,16 +54,21 @@ export async function openAiConvertToJson(args: {
   mode: "convert" | "review";
 }): Promise<{ data: ConvertResult; usage: OpenAiUsage }> {
   const apiKey = requireEnv("OPENAI_API_KEY");
-
-  // Use an env override if you want, otherwise default to a very reliable model for text+json.
-  // You can set OPENAI_MODEL in Vercel env vars later.
   const model = process.env.OPENAI_MODEL || "gpt-4o-mini";
 
   const system = [
-    "You are converting questions into a strict JSON object for Canvas QTI export.",
+    "You convert question text into a strict JSON object for Canvas QTI export.",
     "Return only JSON. No markdown. No commentary.",
-    "If you are unsure, make the best structured guess and keep text faithful.",
-    "Types allowed: multiple_choice_single, multiple_choice_multiple, true_false, short_answer, essay.",
+    "Prefer faithful transcription over rewriting.",
+    "Allowed types: multiple_choice_single, multiple_choice_multiple, true_false, short_answer, essay, file_upload.",
+    "",
+    "Interpret these common authoring conventions:",
+    "1) Multiple choice single: a) b) c) lines, exactly one correct marked with a leading asterisk like *c).",
+    "2) Multiple answers: [ ] incorrect and [*] correct.",
+    "3) Short answer: correct answers are lines that start with an asterisk followed by a space, like * Santa.",
+    "4) Essay: a line of #### indicates essay.",
+    "5) File upload: a line of ^^^^ indicates file upload.",
+    "6) True/False: must be a) True and b) False, with asterisk on the correct one.",
   ].join("\n");
 
   const schemaHint = [
@@ -68,10 +77,10 @@ export async function openAiConvertToJson(args: {
     '  "title": "optional quiz title",',
     '  "items": [',
     "    {",
-    '      "type": "multiple_choice_single|multiple_choice_multiple|true_false|short_answer|essay",',
+    '      "type": "multiple_choice_single|multiple_choice_multiple|true_false|short_answer|essay|file_upload",',
     '      "promptText": "string",',
     '      "choices": [{"text":"string","correct":true|false}] (only for choice based types),',
-    '      "correctText": "string (optional for short answer or essay guidance)"',
+    '      "correctText": "string (optional, for short answer alternatives or essay guidance)"',
     "    }",
     "  ]",
     "}",
@@ -79,7 +88,7 @@ export async function openAiConvertToJson(args: {
 
   const instruction =
     args.mode === "review"
-      ? "Review the provided JSON items for correctness. Fix obvious mistakes, ensure correct flags match the prompt. Return JSON only."
+      ? "Review the provided JSON items for correctness. Fix obvious mistakes. Return JSON only."
       : "Extract questions from the raw input into the JSON shape. Return JSON only.";
 
   const input = [
@@ -97,9 +106,6 @@ export async function openAiConvertToJson(args: {
       model,
       input,
       max_output_tokens: 2000,
-
-      // Force JSON mode so the model must return valid JSON text.
-      // (This makes parsing far more consistent.)
       text: { format: { type: "json_object" } },
     }),
   });
@@ -113,7 +119,6 @@ export async function openAiConvertToJson(args: {
 
   const textOut = extractOutputText(json);
   if (!textOut) {
-    // Helpful for debugging without dumping the whole response
     const status = json?.status ? ` status=${json.status}` : "";
     throw new Error(`OpenAI returned no text output.${status}`);
   }
