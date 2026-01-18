@@ -35,9 +35,11 @@ export default function Page() {
   const [error, setError] = useState("");
   const [notice, setNotice] = useState<string>("");
 
-  // Convert state
-  const [convertText, setConvertText] = useState<string>("");
-  const [convertBusy, setConvertBusy] = useState<boolean>(false);
+  // Canvas import builder (Smart import uses AI)
+  const [importTab, setImportTab] = useState<"smart" | "formatted">("smart");
+  const [importRaw, setImportRaw] = useState<string>("");
+  const [importBusy, setImportBusy] = useState<boolean>(false);
+  const [importError, setImportError] = useState<string>("");
 
   const formatDate = (iso: string | null) => {
     if (!iso) return "";
@@ -89,6 +91,7 @@ export default function Page() {
       setUserEmail(email);
       setAccessToken(token);
 
+      // Important: TypeScript needs an explicit guard that session exists
       if (!token || !session?.user?.id) {
         setSubStatus("");
         setSubPeriodEnd(null);
@@ -302,6 +305,73 @@ export default function Page() {
     downloadBlob(blob, `${selected.title || "quiz"}.xlsx`);
   }
 
+  function estimateQuestionCount(raw: string) {
+    const matches = raw.match(/^\s*\d+\.\s+/gm);
+    return matches ? matches.length : 0;
+  }
+
+  async function importToCanvas(mode: "convert" | "review") {
+    setImportError("");
+    const raw = importRaw.trim();
+    if (!raw) {
+      setImportError("Paste questions first.");
+      return;
+    }
+    if (!accessToken) {
+      setImportError("Please log in first.");
+      return;
+    }
+    if (!isPaid) {
+      setImportError("Smart import is part of the paid plan.");
+      return;
+    }
+
+    try {
+      setImportBusy(true);
+
+      const res = await fetch("/api/convert", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${accessToken}`,
+        },
+        body: JSON.stringify({ raw, mode }),
+      });
+
+      if (!res.ok) {
+        const msg = await res.text();
+        throw new Error(msg || "Import failed.");
+      }
+
+      const blob = await res.blob();
+      const filename = mode === "review" ? "canvas_import_review.zip" : "canvas_import.zip";
+      downloadBlob(blob, filename);
+    } catch (e: any) {
+      setImportError(e?.message || "Import failed.");
+    } finally {
+      setImportBusy(false);
+    }
+  }
+
+  async function handleImportFile(f: File | null) {
+    if (!f) return;
+    setImportError("");
+    try {
+      const name = f.name.toLowerCase();
+      const ok = name.endsWith(".txt") || name.endsWith(".md") || name.endsWith(".csv") || name.endsWith(".tsv");
+      if (!ok) {
+        setImportError("For now, Smart import file upload supports txt, md, csv, and tsv. You can also paste content.");
+        return;
+      }
+      const text = await f.text();
+      setImportRaw(text);
+      setImportTab("smart");
+    } catch {
+      setImportError("Could not read that file.");
+    }
+  }
+
+
   async function startCheckout(billing: "monthly" | "yearly") {
     if (!accessToken) {
       alert("Please log in first.");
@@ -337,42 +407,6 @@ export default function Page() {
       else alert(data?.error ?? "Could not open billing portal.");
     } catch (e: any) {
       alert(e?.message ?? "Could not open billing portal.");
-    }
-  }
-
-  async function convertToQti(doReview: boolean) {
-    if (!accessToken) {
-      alert("Please log in first.");
-      return;
-    }
-    if (!isPaid) {
-      alert("Subscription required.");
-      return;
-    }
-    if (!convertText.trim()) {
-      alert("Paste questions first.");
-      return;
-    }
-
-    setConvertBusy(true);
-    try {
-      const res = await fetch("/api/convert", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ access_token: accessToken, raw: convertText, do_review: doReview }),
-      });
-
-      if (!res.ok) {
-        const j = await res.json().catch(() => null);
-        throw new Error(j?.error ?? `Convert failed (${res.status})`);
-      }
-
-      const blob = await res.blob();
-      downloadBlob(blob, "canvas_qti.zip");
-    } catch (e: any) {
-      alert(e?.message ?? "Convert failed");
-    } finally {
-      setConvertBusy(false);
     }
   }
 
@@ -439,12 +473,12 @@ export default function Page() {
         }
         .hr {
           height: 1px;
-          background: rgba(255, 255, 255, 0.1);
+          background: rgba(255, 255, 255, 0.10);
           margin: 12px 0;
         }
         .notice {
           background: rgba(0, 0, 0, 0.25);
-          border: 1px solid rgba(255, 255, 255, 0.1);
+          border: 1px solid rgba(255, 255, 255, 0.10);
           border-radius: 14px;
           padding: 12px;
           line-height: 1.35;
@@ -475,7 +509,7 @@ export default function Page() {
         }
         .table th,
         .table td {
-          border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+          border-bottom: 1px solid rgba(255, 255, 255, 0.10);
           padding: 10px 8px;
           text-align: left;
           vertical-align: top;
@@ -491,7 +525,7 @@ export default function Page() {
           align-items: flex-start;
           padding: 10px;
           border-radius: 14px;
-          border: 1px solid rgba(255, 255, 255, 0.1);
+          border: 1px solid rgba(255, 255, 255, 0.10);
           background: rgba(255, 255, 255, 0.04);
           margin-top: 8px;
         }
@@ -516,7 +550,7 @@ export default function Page() {
           padding: 2px 6px;
           border-radius: 8px;
           background: rgba(0, 0, 0, 0.35);
-          border: 1px solid rgba(255, 255, 255, 0.1);
+          border: 1px solid rgba(255, 255, 255, 0.10);
         }
         input[type="file"] {
           width: 100%;
@@ -540,58 +574,6 @@ export default function Page() {
         .brandText {
           display: flex;
           flex-direction: column;
-        }
-
-        /* Preview-only accessible surface */
-        .previewSurface {
-          background: rgba(247, 243, 234, 0.98);
-          color: #0b0f1a;
-          border: 1px solid rgba(11, 15, 26, 0.14);
-          box-shadow: 0 14px 50px rgba(0, 0, 0, 0.38);
-        }
-        .previewSurface h2 {
-          color: #0b0f1a;
-        }
-        .previewSurface .small {
-          opacity: 1;
-          color: rgba(11, 15, 26, 0.72);
-        }
-        .previewSurface .hr {
-          background: rgba(11, 15, 26, 0.12);
-        }
-        .previewSurface a {
-          color: #1f76f0;
-        }
-        .previewSurface a:hover {
-          text-decoration: underline;
-        }
-
-        .previewSurface .notice {
-          background: rgba(255, 255, 255, 0.78);
-          border: 1px solid rgba(11, 15, 26, 0.14);
-          color: #0b0f1a;
-        }
-
-        .previewSurface .choice {
-          border: 1px solid rgba(11, 15, 26, 0.14);
-          background: rgba(0, 0, 0, 0.03);
-          color: #0b0f1a;
-        }
-        .previewSurface .choice.correct {
-          border-color: rgba(31, 118, 240, 0.55);
-          background: rgba(31, 118, 240, 0.08);
-        }
-
-        .previewSurface .tag {
-          border: 1px solid rgba(11, 15, 26, 0.14);
-          background: rgba(255, 255, 255, 0.8);
-          color: rgba(11, 15, 26, 0.78);
-        }
-
-        .previewSurface .code {
-          background: rgba(0, 0, 0, 0.06);
-          border: 1px solid rgba(11, 15, 26, 0.14);
-          color: #0b0f1a;
         }
       `}</style>
 
@@ -778,7 +760,7 @@ export default function Page() {
           <div style={{ height: 16 }} />
 
           <div className="grid">
-            <div className="card previewSurface" style={{ flex: "2 1 560px", minWidth: 320 }}>
+            <div className="card" style={{ flex: "2 1 560px", minWidth: 320 }}>
               <h2>Preview</h2>
 
               {itemWarnings.length > 0 && (
@@ -830,103 +812,181 @@ export default function Page() {
               ))}
             </div>
 
-            {/* Right column with stacked cards */}
-            <div style={{ flex: "1 1 320px", minWidth: 300, display: "flex", flexDirection: "column", gap: 16 }}>
-              <div className="card">
-                <h2>Export</h2>
-                <div className="small">Files are generated in your browser.</div>
+            <div className="card" style={{ flex: "1 1 320px", minWidth: 300 }}>
+              <h2>Export</h2>
+              <div className="small">Files are generated in your browser.</div>
 
-                <div style={{ height: 12 }} />
+              <div style={{ height: 12 }} />
 
-                <button className="btn" disabled={!isPaid || loading || items.length === 0} onClick={doExportDocx}>
-                  Export Word (.docx)
-                </button>
+              <button className="btn" disabled={!isPaid || loading || items.length === 0} onClick={doExportDocx}>
+                Export Word (.docx)
+              </button>
 
-                <div style={{ height: 10 }} />
+              <div style={{ height: 10 }} />
 
-                <button className="btn" disabled={!isPaid || loading || items.length === 0} onClick={doExportXlsx}>
-                  Export Excel (.xlsx)
-                </button>
+              <button className="btn" disabled={!isPaid || loading || items.length === 0} onClick={doExportXlsx}>
+                Export Excel (.xlsx)
+              </button>
 
-                {!isPaid && (
-                  <>
-                    <div style={{ height: 12 }} />
-                    <div className="notice">
-                      <b>Locked</b>
-                      <div style={{ marginTop: 6 }}>Exports are unlocked with a subscription.</div>
+              {!isPaid && (
+                <>
+                  <div style={{ height: 12 }} />
+                  <div className="notice">
+                    <b>Locked</b>
+                    <div style={{ marginTop: 6 }}>Exports are unlocked with a subscription.</div>
+                  </div>
+                </>
+              )}
+
+              {isPaid && (
+                <>
+                  <div style={{ height: 12 }} />
+                  <div className="notice">
+                    <b>Unlocked</b>
+                    <div className="small" style={{ marginTop: 6 }}>
+                      Active subscription detected.
                     </div>
-                  </>
-                )}
+                  </div>
+                </>
+              )}
 
-                {isPaid && (
-                  <>
-                    <div style={{ height: 12 }} />
-                    <div className="notice">
-                      <b>Unlocked</b>
-                      <div className="small" style={{ marginTop: 6 }}>
-                        Active subscription detected.
-                      </div>
-                    </div>
-                  </>
-                )}
+              <div className="hr" />
 
-                <div className="hr" />
-
-                <div className="small">
-                  Next steps:
-                  <ul style={{ margin: "8px 0 0 18px" }}>
-                    <li>Embed images in Word exports</li>
-                    <li>Add New Quizzes support</li>
-                    <li>Improve bank referenced guidance</li>
-                  </ul>
-                </div>
-              </div>
-
-              <div className="card">
-                <h2>Convert to Canvas QTI</h2>
-                <div className="small">Paste questions in almost any format. We will structure them and export a QTI zip.</div>
-
-                <div style={{ height: 10 }} />
-
-                <textarea
-                  value={convertText}
-                  onChange={(e) => setConvertText(e.target.value)}
-                  placeholder={"Paste questions here..."}
-                  style={{
-                    width: "100%",
-                    minHeight: 160,
-                    padding: 10,
-                    borderRadius: 12,
-                    border: "1px solid rgba(255, 255, 255, 0.14)",
-                    background: "rgba(255, 255, 255, 0.06)",
-                    color: "#e7e9ee",
-                    resize: "vertical",
-                  }}
-                />
-
-                <div style={{ height: 10 }} />
-
-                <button className="btn" disabled={!isPaid || convertBusy} onClick={() => void convertToQti(false)}>
-                  Export QTI zip
-                </button>
-
-                <div style={{ height: 10 }} />
-
-                <button className="btn" disabled={!isPaid || convertBusy} onClick={() => void convertToQti(true)}>
-                  Export with one review pass
-                </button>
-
-                {!isPaid && (
-                  <>
-                    <div style={{ height: 12 }} />
-                    <div className="notice">
-                      <b>Locked</b>
-                      <div style={{ marginTop: 6 }}>Conversion is available with a subscription.</div>
-                    </div>
-                  </>
-                )}
+              <div className="small">
+                Next steps:
+                <ul style={{ margin: "8px 0 0 18px" }}>
+                  <li>Embed images in Word exports</li>
+                  <li>Add New Quizzes support</li>
+                  <li>Improve bank referenced guidance</li>
+                </ul>
               </div>
             </div>
+
+            <div className="card" style={{ flex: "1 1 320px", minWidth: 300 }}>
+              <h2>Import to Canvas</h2>
+              <div className="small">Smart import uses AI and is metered. Formatted import is coming next.</div>
+
+              <div style={{ height: 12 }} />
+
+              <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                <button
+                  className="pill"
+                  style={{ cursor: "pointer", background: importTab === "smart" ? "rgba(255,255,255,0.10)" : "transparent" }}
+                  onClick={() => setImportTab("smart")}
+                  type="button"
+                >
+                  Smart import
+                </button>
+                <button
+                  className="pill"
+                  style={{ cursor: "pointer", background: importTab === "formatted" ? "rgba(255,255,255,0.10)" : "transparent" }}
+                  onClick={() => setImportTab("formatted")}
+                  type="button"
+                >
+                  Formatted import
+                </button>
+              </div>
+
+              <div style={{ height: 12 }} />
+
+              {importTab === "smart" ? (
+                <>
+                  <div className="small">
+                    Paste anything that looks like questions and answers. Or upload a txt, md, csv, or tsv file.
+                  </div>
+
+                  <div style={{ height: 10 }} />
+
+                  <input
+                    type="file"
+                    accept=".txt,.md,.csv,.tsv,text/plain,text/csv,text/tab-separated-values"
+                    onChange={(e) => handleImportFile(e.target.files?.[0] || null)}
+                  />
+
+                  <div style={{ height: 10 }} />
+
+                  <textarea
+                    style={{ width: "100%", borderRadius: 12, border: "1px solid rgba(255,255,255,0.14)", background: "rgba(0,0,0,0.25)", color: "#e7e9ee", padding: 10, fontFamily: "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, \"Liberation Mono\", \"Courier New\", monospace", fontSize: 12, lineHeight: 1.4 }}
+                    value={importRaw}
+                    onChange={(e) => setImportRaw(e.target.value)}
+                    placeholder={"Paste questions here. Example:\n\n1. What is 2+2?\na) 3\n*b) 4\nc) 5\n\n2. True or False: The sky is blue.\n*a) True\nb) False"}
+                    rows={10}
+                  />
+
+                  <div style={{ height: 10 }} />
+
+                  <div className="small" style={{ display: "flex", justifyContent: "space-between", gap: 12 }}>
+                    <span>Estimated questions: {estimateQuestionCount(importRaw)}</span>
+                    <span>Included: 1,000 questions per month</span>
+                  </div>
+
+                  <div style={{ height: 12 }} />
+
+                  <button className="btn" disabled={!isPaid || importBusy} onClick={() => importToCanvas("convert")}>
+                    {importBusy ? "Working..." : "Export QTI zip"}
+                  </button>
+
+                  <div style={{ height: 10 }} />
+
+                  <button className="btn" disabled={!isPaid || importBusy} onClick={() => importToCanvas("review")}>
+                    {importBusy ? "Working..." : "Export with one review pass"}
+                  </button>
+
+                  {importError && (
+                    <>
+                      <div style={{ height: 10 }} />
+                      <div className="notice" style={{ borderColor: "rgba(255, 99, 99, 0.35)" }}>{importError}</div>
+                    </>
+                  )}
+
+                  {!isPaid && (
+                    <>
+                      <div style={{ height: 10 }} />
+                      <div className="notice">
+                        <b>Locked</b>
+                        <div style={{ marginTop: 6 }}>Smart import is unlocked with a subscription.</div>
+                      </div>
+                    </>
+                  )}
+                </>
+              ) : (
+                <>
+                  <div className="small">
+                    Use our formatted question style for fast, predictable imports. This lane will export without AI soon.
+                  </div>
+
+                  <div style={{ height: 10 }} />
+
+                  <textarea
+                    style={{ width: "100%", borderRadius: 12, border: "1px solid rgba(255,255,255,0.14)", background: "rgba(0,0,0,0.25)", color: "#e7e9ee", padding: 10, fontFamily: "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, \"Liberation Mono\", \"Courier New\", monospace", fontSize: 12, lineHeight: 1.4 }}
+                    value={importRaw}
+                    onChange={(e) => setImportRaw(e.target.value)}
+                    placeholder={"Formatted example:\n\n1. What is 2+3?\na) 6\nb) 1\n*c) 5\nd) 10\n\n2. Which of the following are dinosaurs?\n[ ] Woolly mammoth\n[*] Tyrannosaurus rex\n[*] Triceratops\n[ ] Smilodon fatalis"}
+                    rows={10}
+                  />
+
+                  <div style={{ height: 10 }} />
+
+                  <div className="small">Detected questions: {estimateQuestionCount(importRaw)}</div>
+
+                  <div style={{ height: 12 }} />
+
+                  <button className="btn" disabled type="button">
+                    Export QTI zip
+                  </button>
+
+                  <div style={{ height: 10 }} />
+
+                  <div className="notice">
+                    <b>Next</b>
+                    <div style={{ marginTop: 6 }}>
+                      We will wire this lane to export instantly without AI. For now, use Smart import above.
+                    </div>
+                  </div>
+                </>
+              )}
+            </div>
+
           </div>
         </>
       )}
