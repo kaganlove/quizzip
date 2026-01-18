@@ -9,8 +9,6 @@ export const metadata = {
 export default function LandingPage() {
   return (
     <main className="wrap">
-      <div className="bgGlow" aria-hidden="true" />
-
       <div className="container">
         {/* Header */}
         <header className="topbar">
@@ -260,9 +258,7 @@ export default function LandingPage() {
 
           <details className="qa">
             <summary>What counts toward the 1,000 Smart import questions</summary>
-            <div className="qaBody">
-              Only Smart import conversions. QTI preview and formatted import exports do not count.
-            </div>
+            <div className="qaBody">Only Smart import conversions. QTI preview and formatted import exports do not count.</div>
           </details>
 
           <details className="qa">
@@ -326,23 +322,17 @@ export default function LandingPage() {
 const css = `
   .wrap{
     min-height:100vh;
-    padding:64px 18px;
-    background:#070a12;
-    color:rgba(255,255,255,0.92);
-    position:relative;
-    overflow:hidden;
-  }
-
-  /* Static-looking glow: stays put while content scrolls */
-  .bgGlow{
-    position:fixed;
-    inset:-220px;
-    z-index:0;
+    padding:56px 18px;
     background:
       radial-gradient(1200px 600px at 18% 10%, rgba(99,102,241,0.28), transparent 60%),
       radial-gradient(1100px 600px at 82% 30%, rgba(34,197,94,0.18), transparent 55%),
-      radial-gradient(900px 520px at 55% 80%, rgba(56,189,248,0.10), transparent 60%);
-    pointer-events:none;
+      radial-gradient(900px 520px at 55% 80%, rgba(56,189,248,0.10), transparent 60%),
+      #070a12;
+    background-repeat:no-repeat;
+    background-attachment:fixed;
+    color:rgba(255,255,255,0.92);
+    position:relative;
+    overflow:hidden;
   }
 
   .container{
@@ -459,7 +449,7 @@ const css = `
   }
   .h1Sub{
     display:block;
-    margin-top:14px;
+    margin-top:18px;
     font-size:30px;
     line-height:1.15;
     opacity:0.92;
@@ -471,32 +461,37 @@ const css = `
     font-weight:1000;
     letter-spacing:-0.4px;
     line-height:1.15;
-    margin:14px 0 0 0;
+    margin:18px 0 0 0;
   }
 
   .p{
-    margin-top:16px;
+    margin-top:24px;
     opacity:0.82;
     font-size:16px;
-    line-height:1.55;
+    line-height:1.6;
     max-width:720px;
   }
-  .p.small{font-size:14px; max-width: none; margin-top:16px;}
+  .p.small{
+    font-size:14px;
+    max-width:none;
+    margin-top:18px;
+    line-height:1.6;
+  }
 
   .ctaRow{
     display:flex;
     gap:12px;
-    margin-top:22px;
+    margin-top:26px;
     flex-wrap:wrap;
   }
 
   .featureList{
-    margin-top:22px;
+    margin-top:26px;
     padding-left:0;
     list-style:none;
     display:grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap:12px 26px;
+    gap:14px 28px;
     max-width:720px;
   }
   .featureList li{
@@ -506,7 +501,7 @@ const css = `
     font-size:14px;
     font-weight:900;
     opacity:0.90;
-    line-height:1.3;
+    line-height:1.35;
   }
   .featureList li::before{
     content:"✓";
@@ -524,10 +519,10 @@ const css = `
   }
 
   .trustRow{
-    margin-top:22px;
+    margin-top:26px;
     display:grid;
     grid-template-columns: repeat(3, minmax(0, 1fr));
-    gap:14px;
+    gap:16px;
   }
   .trustItem{
     padding:14px;
@@ -536,14 +531,14 @@ const css = `
     background:rgba(255,255,255,0.04);
   }
   .trustTitle{font-weight:1000; font-size:13px;}
-  .trustBody{margin-top:8px; opacity:0.78; font-size:13px; line-height:1.4;}
+  .trustBody{margin-top:10px; opacity:0.78; font-size:13px; line-height:1.5;}
 
   .kicker{
     font-weight:1000;
     font-size:13px;
     opacity:0.88;
     letter-spacing:0.2px;
-    margin-bottom:10px;
+    margin-bottom:14px;
   }
 
   .price{
@@ -564,22 +559,22 @@ const css = `
   }
 
   .list{
-    margin-top:18px;
+    margin-top:22px;
     padding-left:18px;
     opacity:0.86;
-    line-height:1.8;
+    line-height:1.9;
     font-size:14px;
   }
 
   .finePrint{
-    margin-top:14px;
+    margin-top:18px;
     font-size:12px;
     opacity:0.70;
-    line-height:1.4;
+    line-height:1.45;
   }
 
   .preview{
-    margin-top:22px;
+    margin-top:26px;
     background:rgba(255,255,255,0.05);
     border-color: rgba(255,255,255,0.10);
   }
@@ -589,7 +584,7 @@ const css = `
     gap:18px;
     align-items:stretch;
   }
-  .previewBullets{margin-top:18px; display:flex; flex-direction:column; gap:14px;}
+  .previewBullets{margin-top:22px; display:flex; flex-direction:column; gap:16px;}
   .bullet{display:flex; gap:12px; align-items:flex-start;}
   .bulletDot{
     width:10px; height:10px;
@@ -600,7 +595,7 @@ const css = `
     flex:0 0 auto;
   }
   .bulletTitle{font-weight:1000; font-size:14px;}
-  .bulletBody{margin-top:6px; opacity:0.78; font-size:13px; line-height:1.4;}
+  .bulletBody{margin-top:8px; opacity:0.78; font-size:13px; line-height:1.5;}
 
   .mock{
     border-radius:18px;
@@ -640,15 +635,15 @@ const css = `
     background:rgba(255,255,255,0.04);
   }
   .mockH{font-weight:1000; font-size:13px;}
-  .mockSub{margin-top:8px; opacity:0.78; font-size:13px; line-height:1.4;}
+  .mockSub{margin-top:10px; opacity:0.78; font-size:13px; line-height:1.5;}
 
   .how{
-    margin-top:22px;
+    margin-top:26px;
     background:rgba(255,255,255,0.05);
     border-color: rgba(255,255,255,0.10);
   }
   .steps{
-    margin-top:16px;
+    margin-top:18px;
     display:grid;
     grid-template-columns: repeat(3, minmax(0, 1fr));
     gap:14px;
@@ -669,20 +664,20 @@ const css = `
     background:rgba(255,255,255,0.10);
     border:1px solid rgba(255,255,255,0.12);
   }
-  .stepTitle{margin-top:12px; font-weight:1000;}
-  .stepBody{margin-top:8px; opacity:0.78; font-size:13px; line-height:1.45;}
+  .stepTitle{margin-top:14px; font-weight:1000;}
+  .stepBody{margin-top:10px; opacity:0.78; font-size:13px; line-height:1.5;}
 
   .faq{
-    margin-top:22px;
+    margin-top:26px;
     background:rgba(255,255,255,0.05);
     border-color: rgba(255,255,255,0.10);
   }
   .qa{
-    margin-top:14px;
+    margin-top:16px;
     border-radius:16px;
     border:1px solid rgba(255,255,255,0.10);
     background:rgba(255,255,255,0.04);
-    padding:14px 16px;
+    padding:16px 18px;
   }
   .qa summary{
     cursor:pointer;
@@ -692,13 +687,14 @@ const css = `
     outline:none;
     line-height:1.45;
     padding:2px 0;
+    letter-spacing:0.1px;
   }
   .qa summary::-webkit-details-marker{display:none;}
   .qaBody{
-    margin-top:12px;
+    margin-top:14px;
     opacity:0.78;
     font-size:13px;
-    line-height:1.5;
+    line-height:1.6;
   }
 
   .footer{
