@@ -25,6 +25,9 @@ function statusText(a: Assessment) {
 export default function Page() {
   const supabase = useMemo(() => supabaseBrowser(), []);
 
+  const [toolTab, setToolTab] = useState<"preview" | "convert">("preview");
+
+  // Preview state
   const [file, setFile] = useState<File | null>(null);
   const [assessments, setAssessments] = useState<Assessment[]>([]);
   const [warnings, setWarnings] = useState<string[]>([]);
@@ -33,6 +36,7 @@ export default function Page() {
   const [itemWarnings, setItemWarnings] = useState<string[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+
   const [notice, setNotice] = useState<string>("");
 
   // Canvas import builder (Smart import uses AI)
@@ -76,7 +80,6 @@ export default function Page() {
 
   function sanitizeHtml(html: string) {
     return DOMPurify.sanitize(html, {
-      // Allow blob: URLs created from zip resources and data: URLs if they appear.
       ALLOWED_URI_REGEXP: /^(?:(?:https?|mailto|tel|blob|data):|[^a-z]|[a-z+.-]+(?:[^a-z+.-]|$))/i,
     }) as string;
   }
@@ -91,7 +94,6 @@ export default function Page() {
       setUserEmail(email);
       setAccessToken(token);
 
-      // Important: TypeScript needs an explicit guard that session exists
       if (!token || !session?.user?.id) {
         setSubStatus("");
         setSubPeriodEnd(null);
@@ -144,7 +146,7 @@ export default function Page() {
         body: JSON.stringify({ access_token: token }),
       });
     } catch {
-      // Silent on purpose
+      // silent
     }
   }
 
@@ -163,7 +165,6 @@ export default function Page() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // If the user returns from Stripe, do a single background sync and clean the URL.
   useEffect(() => {
     if (!accessToken) return;
     if (didPostCheckoutSync) return;
@@ -174,7 +175,6 @@ export default function Page() {
     const sessionId = url.searchParams.get("session_id") || url.searchParams.get("stripe_session_id");
 
     const looksLikeCheckoutReturn = checkout === "success" || success === "true" || Boolean(sessionId);
-
     if (!looksLikeCheckoutReturn) return;
 
     (async () => {
@@ -196,7 +196,6 @@ export default function Page() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [accessToken, didPostCheckoutSync]);
 
-  // Extra safety: one time background sync after login if status is missing or incomplete.
   useEffect(() => {
     if (!accessToken) return;
     if (didBootstrapSync) return;
@@ -355,6 +354,13 @@ export default function Page() {
 
   async function handleImportFile(f: File | null) {
     if (!f) return;
+
+    // Gate the upload itself (your request)
+    if (!isPaid) {
+      setImportError("Smart import file upload is available on the paid plan. Subscribe to unlock.");
+      return;
+    }
+
     setImportError("");
     try {
       const name = f.name.toLowerCase();
@@ -370,7 +376,6 @@ export default function Page() {
       setImportError("Could not read that file.");
     }
   }
-
 
   async function startCheckout(billing: "monthly" | "yearly") {
     if (!accessToken) {
@@ -410,6 +415,14 @@ export default function Page() {
     }
   }
 
+  const accountStatusPill = useMemo(() => {
+    const status = (subStatus || "").toLowerCase();
+    const active = status === "active" || status === "trialing";
+    if (!userEmail) return { cls: "pill bad", text: "Not signed in" };
+    if (active) return { cls: "pill good", text: "Active" };
+    return { cls: "pill warn", text: "Free" };
+  }, [subStatus, userEmail]);
+
   return (
     <main className="wrap">
       <style jsx global>{`
@@ -424,15 +437,113 @@ export default function Page() {
           color: #e7e9ee;
         }
         .wrap {
-          padding: 28px 18px 40px;
+          padding: 18px 18px 40px;
           max-width: 1200px;
           margin: 0 auto;
         }
+
+        .topbar {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          gap: 14px;
+        }
+
+        .brand {
+          display: flex;
+          align-items: center;
+          gap: 14px;
+        }
+        .brandLogo {
+          width: 56px;
+          height: 56px;
+          border-radius: 16px;
+          box-shadow: 0 12px 34px rgba(0, 0, 0, 0.35);
+          flex: 0 0 auto;
+        }
+        .brandText {
+          display: flex;
+          flex-direction: column;
+        }
+        .h1 {
+          font-size: 24px;
+          font-weight: 900;
+          letter-spacing: 0.2px;
+        }
+        .sub {
+          opacity: 0.85;
+          margin-top: 6px;
+          line-height: 1.35;
+          font-size: 13px;
+        }
+
+        .accountTop {
+          display: flex;
+          align-items: center;
+          gap: 10px;
+        }
+        .accountEmail {
+          font-size: 12px;
+          opacity: 0.85;
+          max-width: 260px;
+          overflow: hidden;
+          text-overflow: ellipsis;
+          white-space: nowrap;
+        }
+
+        details.dropdown {
+          position: relative;
+        }
+        details.dropdown summary {
+          list-style: none;
+          cursor: pointer;
+          user-select: none;
+        }
+        details.dropdown summary::-webkit-details-marker {
+          display: none;
+        }
+        .dropBtn {
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          width: 38px;
+          height: 38px;
+          border-radius: 14px;
+          border: 1px solid rgba(168, 85, 247, 0.35);
+          background: rgba(168, 85, 247, 0.12);
+          color: rgba(255, 255, 255, 0.92);
+          font-weight: 900;
+        }
+        .dropPanel {
+          position: absolute;
+          right: 0;
+          top: 46px;
+          width: 260px;
+          z-index: 50;
+          border-radius: 16px;
+          background: rgba(20, 16, 34, 0.96);
+          border: 1px solid rgba(255, 255, 255, 0.12);
+          box-shadow: 0 16px 50px rgba(0, 0, 0, 0.45);
+          padding: 12px;
+        }
+        .dropTitle {
+          font-weight: 900;
+          font-size: 13px;
+        }
+        .dropLine {
+          margin-top: 8px;
+          font-size: 12px;
+          opacity: 0.85;
+          line-height: 1.35;
+          word-break: break-word;
+        }
+
         .grid {
           display: flex;
           gap: 16px;
           flex-wrap: wrap;
           align-items: stretch;
+          margin-top: 14px;
         }
         .card {
           background: rgba(255, 255, 255, 0.06);
@@ -442,21 +553,19 @@ export default function Page() {
           box-shadow: 0 10px 40px rgba(0, 0, 0, 0.35);
           backdrop-filter: blur(10px);
         }
-        .h1 {
-          font-size: 28px;
-          font-weight: 900;
-          letter-spacing: 0.2px;
+
+        .sectionTitle {
+          font-size: 16px;
+          font-weight: 950;
+          margin: 0;
         }
-        .sub {
-          opacity: 0.85;
-          margin-top: 6px;
-          line-height: 1.35;
-        }
+
         .small {
           font-size: 12px;
           opacity: 0.85;
           line-height: 1.35;
         }
+
         .btn {
           width: 100%;
           padding: 10px 12px;
@@ -464,25 +573,49 @@ export default function Page() {
           border: 1px solid rgba(255, 255, 255, 0.14);
           background: rgba(255, 255, 255, 0.08);
           color: #e7e9ee;
-          font-weight: 800;
+          font-weight: 900;
           cursor: pointer;
+          transition: transform 120ms ease, filter 120ms ease, box-shadow 120ms ease;
         }
         .btn:disabled {
           opacity: 0.45;
           cursor: not-allowed;
         }
+        .btn:hover {
+          transform: translateY(-1px);
+          filter: brightness(1.03);
+        }
+        .btn:active {
+          transform: translateY(0px);
+        }
+
+        .btnPrimary {
+          border-color: rgba(168, 85, 247, 0.5);
+          background: linear-gradient(135deg, rgba(168, 85, 247, 0.95), rgba(236, 72, 153, 0.78));
+          box-shadow: 0 12px 28px rgba(168, 85, 247, 0.22), 0 10px 24px rgba(236, 72, 153, 0.12);
+        }
+        .btnPrimary:hover {
+          box-shadow: 0 14px 34px rgba(168, 85, 247, 0.28), 0 12px 26px rgba(236, 72, 153, 0.16);
+        }
+        .btnOutline {
+          border-color: rgba(168, 85, 247, 0.45);
+          background: rgba(168, 85, 247, 0.1);
+        }
+
         .hr {
           height: 1px;
-          background: rgba(255, 255, 255, 0.10);
+          background: rgba(255, 255, 255, 0.1);
           margin: 12px 0;
         }
+
         .notice {
           background: rgba(0, 0, 0, 0.25);
-          border: 1px solid rgba(255, 255, 255, 0.10);
+          border: 1px solid rgba(255, 255, 255, 0.1);
           border-radius: 14px;
           padding: 12px;
           line-height: 1.35;
         }
+
         .pill {
           display: inline-flex;
           align-items: center;
@@ -490,7 +623,7 @@ export default function Page() {
           border-radius: 999px;
           border: 1px solid rgba(255, 255, 255, 0.14);
           font-size: 12px;
-          font-weight: 800;
+          font-weight: 900;
           letter-spacing: 0.2px;
         }
         .pill.good {
@@ -502,6 +635,7 @@ export default function Page() {
         .pill.bad {
           background: rgba(231, 76, 60, 0.14);
         }
+
         .table {
           width: 100%;
           border-collapse: collapse;
@@ -509,7 +643,7 @@ export default function Page() {
         }
         .table th,
         .table td {
-          border-bottom: 1px solid rgba(255, 255, 255, 0.10);
+          border-bottom: 1px solid rgba(255, 255, 255, 0.1);
           padding: 10px 8px;
           text-align: left;
           vertical-align: top;
@@ -517,15 +651,16 @@ export default function Page() {
         .table th {
           font-size: 12px;
           opacity: 0.8;
-          font-weight: 800;
+          font-weight: 900;
         }
+
         .choice {
           display: flex;
           gap: 10px;
           align-items: flex-start;
           padding: 10px;
           border-radius: 14px;
-          border: 1px solid rgba(255, 255, 255, 0.10);
+          border: 1px solid rgba(255, 255, 255, 0.1);
           background: rgba(255, 255, 255, 0.04);
           margin-top: 8px;
         }
@@ -545,223 +680,466 @@ export default function Page() {
           background: rgba(255, 255, 255, 0.07);
           flex: 0 0 auto;
         }
+
         .code {
           font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
           padding: 2px 6px;
           border-radius: 8px;
           background: rgba(0, 0, 0, 0.35);
-          border: 1px solid rgba(255, 255, 255, 0.10);
-        }
-        input[type="file"] {
-          width: 100%;
-        }
-        a {
-          color: #cfe2ff;
+          border: 1px solid rgba(255, 255, 255, 0.1);
         }
 
-        .brand {
+        .tabsRow {
           display: flex;
-          align-items: center;
-          gap: 14px;
+          gap: 10px;
+          flex-wrap: wrap;
         }
-        .brandLogo {
-          width: 64px;
-          height: 64px;
-          border-radius: 16px;
-          box-shadow: 0 12px 34px rgba(0, 0, 0, 0.35);
-          flex: 0 0 auto;
+        .tabBtn {
+          flex: 1 1 auto;
+          padding: 10px 12px;
+          border-radius: 14px;
+          border: 1px solid rgba(255, 255, 255, 0.14);
+          background: rgba(255, 255, 255, 0.06);
+          color: rgba(255, 255, 255, 0.92);
+          font-weight: 950;
+          cursor: pointer;
         }
-        .brandText {
-          display: flex;
-          flex-direction: column;
+        .tabBtn.active {
+          border-color: rgba(168, 85, 247, 0.55);
+          background: rgba(168, 85, 247, 0.16);
+        }
+
+        @media (max-width: 820px) {
+          .accountEmail {
+            display: none;
+          }
         }
       `}</style>
 
-      <div className="brand">
-        <img className="brandLogo" src="/quizzip-logo.png" alt="QuizZip logo" />
-        <div className="brandText">
-          <div className="h1">QuizZip</div>
-          <div className="sub">Upload a Canvas Classic quiz export zip. Parsing stays in your browser.</div>
-        </div>
-      </div>
-
-      <div style={{ height: 14 }} />
-
-      <div className="grid">
-        <div className="card" style={{ flex: "1 1 320px", minWidth: 300 }}>
-          <h2>1) Upload</h2>
-          <input type="file" accept=".zip" onChange={(e) => void onPickFile(e.target.files?.[0] ?? null)} disabled={loading} />
-          <div style={{ height: 10 }} />
-          <div className="small">Nothing is uploaded to our servers.</div>
-
-          {warnings.length > 0 && (
-            <>
-              <div className="hr" />
-              <div className="notice">
-                <b>Warnings</b>
-                <ul style={{ margin: "8px 0 0 18px" }}>
-                  {warnings.map((w, i) => (
-                    <li key={i}>{w}</li>
-                  ))}
-                </ul>
-              </div>
-            </>
-          )}
-
-          {error && (
-            <>
-              <div className="hr" />
-              <div className="notice">
-                <b>Error</b>
-                <div style={{ marginTop: 6 }}>{error}</div>
-              </div>
-            </>
-          )}
+      {/* Top bar */}
+      <div className="topbar">
+        <div className="brand">
+          <img className="brandLogo" src="/quizzip-logo.png" alt="Quizzip logo" />
+          <div className="brandText">
+            <div className="h1">Quizzip</div>
+            <div className="sub">Preview Canvas Classic exports for free, then convert question banks into a Canvas import zip.</div>
+          </div>
         </div>
 
-        <div className="card" style={{ flex: "1 1 320px", minWidth: 300 }}>
-          <h2>2) Account and plan</h2>
+        <div className="accountTop">
+          <div className="accountEmail">{userEmail || "Not signed in"}</div>
+          <span className={accountStatusPill.cls}>{accountStatusPill.text}</span>
 
-          {!userEmail && (
-            <div className="notice">
-              <b>Log in to unlock exports</b>
-              <div style={{ marginTop: 8 }}>
-                <Link href="/login" style={{ textDecoration: "underline" }}>
-                  Log in
-                </Link>{" "}
-                <Link href="/signup" style={{ textDecoration: "underline" }}>
-                  Create account
-                </Link>
-              </div>
-              <div className="small" style={{ marginTop: 8 }}>
-                Monthly 9 dollars. Yearly 90 dollars.
-              </div>
-            </div>
-          )}
+          <details className="dropdown">
+            <summary className="dropBtn" aria-label="Account menu">
+              ☰
+            </summary>
+            <div className="dropPanel">
+              <div className="dropTitle">Account</div>
+              <div className="dropLine">{userEmail ? userEmail : "Not signed in"}</div>
+              <div className="dropLine">Plan: {subscriptionLabel}</div>
 
-          {userEmail && (
-            <>
-              <div className="notice">
-                <b>Signed in</b>
-                <div className="small" style={{ marginTop: 6 }}>
-                  {userEmail}
-                </div>
-                <div className="small" style={{ marginTop: 6 }}>
-                  Subscription status: {subscriptionLabel}
-                </div>
-              </div>
               {notice ? (
                 <div className="notice" style={{ marginTop: 10 }}>
                   {notice}
                 </div>
               ) : null}
 
-              <div style={{ height: 10 }} />
+              <div className="hr" />
 
-              {!isPaid && (
+              {!userEmail ? (
                 <>
-                  <button className="btn" onClick={() => void startCheckout("monthly")}>
-                    Subscribe monthly
-                  </button>
+                  <Link className="btn btnPrimary" href="/login?next=/app">
+                    Log in
+                  </Link>
                   <div style={{ height: 10 }} />
-                  <button className="btn" onClick={() => void startCheckout("yearly")}>
-                    Subscribe yearly
-                  </button>
+                  <Link className="btn btnOutline" href="/signup">
+                    Create account
+                  </Link>
                   <div className="small" style={{ marginTop: 10 }}>
-                    After payment, return here and exports unlock automatically. If it does not unlock, log out and log in again.
+                    Monthly 9 dollars. Yearly 90 dollars.
                   </div>
                 </>
-              )}
-
-              {isPaid && (
+              ) : (
                 <>
-                  <button className="btn" onClick={() => void openBillingPortal()}>
-                    Manage billing
+                  {!isPaid ? (
+                    <>
+                      <button className="btn btnPrimary" onClick={() => void startCheckout("monthly")}>
+                        Subscribe monthly
+                      </button>
+                      <div style={{ height: 10 }} />
+                      <button className="btn btnOutline" onClick={() => void startCheckout("yearly")}>
+                        Subscribe yearly
+                      </button>
+                      <div className="small" style={{ marginTop: 10 }}>
+                        After payment, return here and exports unlock automatically.
+                      </div>
+                    </>
+                  ) : (
+                    <>
+                      <button className="btn btnPrimary" onClick={() => void openBillingPortal()}>
+                        Manage billing
+                      </button>
+                    </>
+                  )}
+
+                  <div style={{ height: 10 }} />
+
+                  <button
+                    className="btn btnOutline"
+                    onClick={async () => {
+                      await supabase.auth.signOut();
+                      window.location.href = "/app";
+                    }}
+                  >
+                    Log out
                   </button>
                 </>
               )}
-
-              <div style={{ height: 10 }} />
-
-              <button
-                className="btn"
-                onClick={async () => {
-                  await supabase.auth.signOut();
-                  window.location.href = "/app";
-                }}
-              >
-                Log out
-              </button>
-            </>
-          )}
-        </div>
-
-        <div className="card" style={{ flex: "2 1 560px", minWidth: 320 }}>
-          <h2>3) Assessments</h2>
-
-          {!file && <div className="small">Upload a zip to see assessments.</div>}
-
-          {file && (
-            <>
-              <table className="table">
-                <thead>
-                  <tr>
-                    <th>Title</th>
-                    <th>Status</th>
-                    <th>Items</th>
-                    <th>Bank refs</th>
-                    <th>Types</th>
-                    <th />
-                  </tr>
-                </thead>
-                <tbody>
-                  {assessments.map((a) => (
-                    <tr key={a.id}>
-                      <td style={{ fontWeight: 800 }}>{a.title || a.id}</td>
-                      <td>
-                        <span className={pillClass(a)}>{statusText(a)}</span>
-                      </td>
-                      <td>{a.itemCount}</td>
-                      <td>{a.bankRefCount}</td>
-                      <td className="small">
-                        {Object.entries(a.typeCounts)
-                          .map(([k, v]) => `${k}:${v}`)
-                          .join(", ")}
-                      </td>
-                      <td style={{ textAlign: "right" }}>
-                        <button className="btn" onClick={() => void onSelect(a.id)} disabled={loading}>
-                          View
-                        </button>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-
-              {selected && selected.itemCount === 0 && selected.bankRefCount > 0 && (
-                <>
-                  <div className="hr" />
-                  <div className="notice">
-                    <b>This export does not include questions</b>
-                    <div style={{ marginTop: 6 }}>
-                      It references question banks ({selected.bankRefCount} bank refs). Canvas does not embed those questions in this quiz export zip,
-                      so preview and export are not possible for this assessment.
-                    </div>
-                  </div>
-                </>
-              )}
-            </>
-          )}
+            </div>
+          </details>
         </div>
       </div>
 
-      {selected && (
+      {/* Tool chooser + main content */}
+      <div className="grid">
+        {/* Tool chooser */}
+        <div className="card" style={{ flex: "1 1 320px", minWidth: 300 }}>
+          <h2 className="sectionTitle">Tools</h2>
+          <div className="small" style={{ marginTop: 8 }}>
+            Start free with preview. Convert to a Canvas import zip when you are ready.
+          </div>
+
+          <div style={{ height: 12 }} />
+
+          <div className="tabsRow">
+            <button
+              type="button"
+              className={"tabBtn " + (toolTab === "preview" ? "active" : "")}
+              onClick={() => setToolTab("preview")}
+            >
+              Preview export (Free)
+            </button>
+
+            <button
+              type="button"
+              className={"tabBtn " + (toolTab === "convert" ? "active" : "")}
+              onClick={() => setToolTab("convert")}
+            >
+              Convert to Canvas (Paid)
+            </button>
+          </div>
+
+          <div style={{ height: 12 }} />
+
+          {toolTab === "preview" ? (
+            <div className="notice">
+              <b>Preview mode</b>
+              <div style={{ marginTop: 8 }}>
+                Upload a Canvas Classic export zip to view assessments and questions in a clean preview.
+              </div>
+              <div className="small" style={{ marginTop: 10 }}>
+                Nothing is uploaded to our servers for preview.
+              </div>
+            </div>
+          ) : (
+            <div className="notice">
+              <b>Convert mode</b>
+              <div style={{ marginTop: 8 }}>
+                Paste or upload question content, then export a Canvas import zip.
+              </div>
+              {!isPaid && (
+                <div className="small" style={{ marginTop: 10 }}>
+                  Smart import is locked until you subscribe.
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+
+        {/* Preview flow */}
+        {toolTab === "preview" ? (
+          <>
+            <div className="card" style={{ flex: "1 1 320px", minWidth: 300 }}>
+              <h2 className="sectionTitle">Upload export zip</h2>
+
+              <div style={{ height: 10 }} />
+
+              <input
+                type="file"
+                accept=".zip"
+                onChange={(e) => void onPickFile(e.target.files?.[0] ?? null)}
+                disabled={loading}
+              />
+
+              <div style={{ height: 10 }} />
+
+              <div className="small">Parsing stays in your browser.</div>
+
+              {warnings.length > 0 && (
+                <>
+                  <div className="hr" />
+                  <div className="notice">
+                    <b>Warnings</b>
+                    <ul style={{ margin: "8px 0 0 18px" }}>
+                      {warnings.map((w, i) => (
+                        <li key={i}>{w}</li>
+                      ))}
+                    </ul>
+                  </div>
+                </>
+              )}
+
+              {error && (
+                <>
+                  <div className="hr" />
+                  <div className="notice">
+                    <b>Error</b>
+                    <div style={{ marginTop: 6 }}>{error}</div>
+                  </div>
+                </>
+              )}
+            </div>
+
+            <div className="card" style={{ flex: "2 1 560px", minWidth: 320 }}>
+              <h2 className="sectionTitle">Assessments</h2>
+
+              {!file && <div className="small" style={{ marginTop: 10 }}>Upload a zip to see assessments.</div>}
+
+              {file && (
+                <>
+                  <div style={{ height: 10 }} />
+
+                  <table className="table">
+                    <thead>
+                      <tr>
+                        <th>Title</th>
+                        <th>Status</th>
+                        <th>Items</th>
+                        <th>Bank refs</th>
+                        <th>Types</th>
+                        <th />
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {assessments.map((a) => (
+                        <tr key={a.id}>
+                          <td style={{ fontWeight: 900 }}>{a.title || a.id}</td>
+                          <td>
+                            <span className={pillClass(a)}>{statusText(a)}</span>
+                          </td>
+                          <td>{a.itemCount}</td>
+                          <td>{a.bankRefCount}</td>
+                          <td className="small">
+                            {Object.entries(a.typeCounts)
+                              .map(([k, v]) => `${k}:${v}`)
+                              .join(", ")}
+                          </td>
+                          <td style={{ textAlign: "right" }}>
+                            <button className="btn btnPrimary" onClick={() => void onSelect(a.id)} disabled={loading}>
+                              View
+                            </button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+
+                  {selected && selected.itemCount === 0 && selected.bankRefCount > 0 && (
+                    <>
+                      <div className="hr" />
+                      <div className="notice">
+                        <b>This export does not include questions</b>
+                        <div style={{ marginTop: 6 }}>
+                          It references question banks ({selected.bankRefCount} bank refs). Canvas does not embed those questions in this export zip,
+                          so preview and export are not possible for this assessment.
+                        </div>
+                      </div>
+                    </>
+                  )}
+                </>
+              )}
+            </div>
+          </>
+        ) : (
+          /* Convert flow */
+          <div className="card" style={{ flex: "2 1 900px", minWidth: 320 }}>
+            <h2 className="sectionTitle">Convert questions into a Canvas import zip</h2>
+            <div className="small" style={{ marginTop: 8 }}>
+              Smart import uses AI and is metered. Formatted import will export instantly without AI soon.
+            </div>
+
+            <div style={{ height: 14 }} />
+
+            <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+              <button
+                className={"tabBtn " + (importTab === "smart" ? "active" : "")}
+                onClick={() => setImportTab("smart")}
+                type="button"
+              >
+                Smart import
+              </button>
+              <button
+                className={"tabBtn " + (importTab === "formatted" ? "active" : "")}
+                onClick={() => setImportTab("formatted")}
+                type="button"
+              >
+                Formatted import
+              </button>
+            </div>
+
+            <div style={{ height: 14 }} />
+
+            {importTab === "smart" ? (
+              <>
+                <div className="notice">
+                  <b>Smart import</b>
+                  <div style={{ marginTop: 8 }}>
+                    Paste anything that looks like questions and answers, or upload a txt, md, csv, or tsv file.
+                  </div>
+                  {!isPaid && (
+                    <div className="small" style={{ marginTop: 10 }}>
+                      Smart import is locked until you subscribe.
+                    </div>
+                  )}
+                </div>
+
+                <div style={{ height: 12 }} />
+
+                <input
+                  type="file"
+                  accept=".txt,.md,.csv,.tsv,text/plain,text/csv,text/tab-separated-values"
+                  onChange={(e) => void handleImportFile(e.target.files?.[0] || null)}
+                  disabled={!isPaid}
+                />
+
+                <div style={{ height: 10 }} />
+
+                <textarea
+                  style={{
+                    width: "100%",
+                    borderRadius: 12,
+                    border: "1px solid rgba(255,255,255,0.14)",
+                    background: "rgba(0,0,0,0.25)",
+                    color: "#e7e9ee",
+                    padding: 10,
+                    fontFamily:
+                      'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace',
+                    fontSize: 12,
+                    lineHeight: 1.4,
+                  }}
+                  value={importRaw}
+                  onChange={(e) => setImportRaw(e.target.value)}
+                  placeholder={
+                    "Paste questions here.\n\n1. What is 2+2?\na) 3\n*b) 4\nc) 5\n\n2. True or False: The sky is blue.\n*a) True\nb) False"
+                  }
+                  rows={12}
+                />
+
+                <div style={{ height: 10 }} />
+
+                <div className="small" style={{ display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
+                  <span>Estimated questions: {estimateQuestionCount(importRaw)}</span>
+                  <span>Included: 1,000 questions per month</span>
+                </div>
+
+                <div style={{ height: 12 }} />
+
+                <button className="btn btnPrimary" disabled={!isPaid || importBusy} onClick={() => void importToCanvas("convert")}>
+                  {importBusy ? "Working..." : "Export Canvas import zip"}
+                </button>
+
+                <div style={{ height: 10 }} />
+
+                <button className="btn btnOutline" disabled={!isPaid || importBusy} onClick={() => void importToCanvas("review")}>
+                  {importBusy ? "Working..." : "Export with one review pass"}
+                </button>
+
+                {importError && (
+                  <>
+                    <div style={{ height: 10 }} />
+                    <div className="notice" style={{ borderColor: "rgba(255, 99, 99, 0.35)" }}>
+                      {importError}
+                    </div>
+                  </>
+                )}
+
+                {!isPaid && (
+                  <>
+                    <div style={{ height: 12 }} />
+                    <div className="notice">
+                      <b>Locked</b>
+                      <div style={{ marginTop: 6 }}>Subscribe to unlock Smart import and exports.</div>
+                    </div>
+                  </>
+                )}
+              </>
+            ) : (
+              <>
+                <div className="notice">
+                  <b>Formatted import</b>
+                  <div style={{ marginTop: 8 }}>
+                    Use the Quizzip formatted style for fast, predictable imports. This will export without AI soon.
+                  </div>
+                </div>
+
+                <div style={{ height: 12 }} />
+
+                <textarea
+                  style={{
+                    width: "100%",
+                    borderRadius: 12,
+                    border: "1px solid rgba(255,255,255,0.14)",
+                    background: "rgba(0,0,0,0.25)",
+                    color: "#e7e9ee",
+                    padding: 10,
+                    fontFamily:
+                      'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace',
+                    fontSize: 12,
+                    lineHeight: 1.4,
+                  }}
+                  value={importRaw}
+                  onChange={(e) => setImportRaw(e.target.value)}
+                  placeholder={
+                    "Formatted example:\n\n1. What is 2+3?\na) 6\nb) 1\n*c) 5\nd) 10\n\n2. Which of the following are dinosaurs?\n[ ] Woolly mammoth\n[*] Tyrannosaurus rex\n[*] Triceratops\n[ ] Smilodon fatalis"
+                  }
+                  rows={12}
+                />
+
+                <div style={{ height: 10 }} />
+
+                <div className="small">Detected questions: {estimateQuestionCount(importRaw)}</div>
+
+                <div style={{ height: 12 }} />
+
+                <button className="btn btnPrimary" disabled type="button">
+                  Export Canvas import zip
+                </button>
+
+                <div style={{ height: 10 }} />
+
+                <div className="notice">
+                  <b>Next</b>
+                  <div style={{ marginTop: 6 }}>
+                    We will wire this lane to export instantly without AI. For now, use Smart import.
+                  </div>
+                </div>
+              </>
+            )}
+          </div>
+        )}
+      </div>
+
+      {/* Preview + Export panels stay available when a quiz is selected */}
+      {toolTab === "preview" && selected ? (
         <>
           <div style={{ height: 16 }} />
 
           <div className="grid">
             <div className="card" style={{ flex: "2 1 560px", minWidth: 320 }}>
-              <h2>Preview</h2>
+              <h2 className="sectionTitle">Preview</h2>
+
+              <div style={{ height: 10 }} />
 
               {itemWarnings.length > 0 && (
                 <div className="notice" style={{ marginBottom: 12 }}>
@@ -776,13 +1154,12 @@ export default function Page() {
 
               {!file && <div className="small">Upload a zip.</div>}
               {file && selected.itemCount === 0 && <div className="small">No items available for this assessment.</div>}
-
               {file && selected.itemCount > 0 && items.length === 0 && <div className="small">Click View to load questions.</div>}
 
               {previewItems.map((q, qi) => (
                 <div key={q.id} className="notice" style={{ marginBottom: 12 }}>
                   <div className="small">{q.type}</div>
-                  <div style={{ fontSize: 18, fontWeight: 900, marginTop: 6 }}>{qi + 1}.</div>
+                  <div style={{ fontSize: 18, fontWeight: 950, marginTop: 6 }}>{qi + 1}.</div>
                   <div style={{ marginTop: 8 }}>
                     <span dangerouslySetInnerHTML={{ __html: sanitizeHtml(q.promptHtml || "(no prompt)") }} />
                   </div>
@@ -813,19 +1190,21 @@ export default function Page() {
             </div>
 
             <div className="card" style={{ flex: "1 1 320px", minWidth: 300 }}>
-              <h2>Export</h2>
-              <div className="small">Files are generated in your browser.</div>
+              <h2 className="sectionTitle">Export</h2>
+              <div className="small" style={{ marginTop: 8 }}>
+                Files are generated in your browser.
+              </div>
 
               <div style={{ height: 12 }} />
 
-              <button className="btn" disabled={!isPaid || loading || items.length === 0} onClick={doExportDocx}>
-                Export Word (.docx)
+              <button className="btn btnPrimary" disabled={!isPaid || loading || items.length === 0} onClick={doExportDocx}>
+                Export Word
               </button>
 
               <div style={{ height: 10 }} />
 
-              <button className="btn" disabled={!isPaid || loading || items.length === 0} onClick={doExportXlsx}>
-                Export Excel (.xlsx)
+              <button className="btn btnOutline" disabled={!isPaid || loading || items.length === 0} onClick={doExportXlsx}>
+                Export Excel
               </button>
 
               {!isPaid && (
@@ -837,159 +1216,10 @@ export default function Page() {
                   </div>
                 </>
               )}
-
-              {isPaid && (
-                <>
-                  <div style={{ height: 12 }} />
-                  <div className="notice">
-                    <b>Unlocked</b>
-                    <div className="small" style={{ marginTop: 6 }}>
-                      Active subscription detected.
-                    </div>
-                  </div>
-                </>
-              )}
-
-              <div className="hr" />
-
-              <div className="small">
-                Next steps:
-                <ul style={{ margin: "8px 0 0 18px" }}>
-                  <li>Embed images in Word exports</li>
-                  <li>Add New Quizzes support</li>
-                  <li>Improve bank referenced guidance</li>
-                </ul>
-              </div>
             </div>
-
-            <div className="card" style={{ flex: "1 1 320px", minWidth: 300 }}>
-              <h2>Import to Canvas</h2>
-              <div className="small">Smart import uses AI and is metered. Formatted import is coming next.</div>
-
-              <div style={{ height: 12 }} />
-
-              <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                <button
-                  className="pill"
-                  style={{ cursor: "pointer", background: importTab === "smart" ? "rgba(255,255,255,0.10)" : "transparent" }}
-                  onClick={() => setImportTab("smart")}
-                  type="button"
-                >
-                  Smart import
-                </button>
-                <button
-                  className="pill"
-                  style={{ cursor: "pointer", background: importTab === "formatted" ? "rgba(255,255,255,0.10)" : "transparent" }}
-                  onClick={() => setImportTab("formatted")}
-                  type="button"
-                >
-                  Formatted import
-                </button>
-              </div>
-
-              <div style={{ height: 12 }} />
-
-              {importTab === "smart" ? (
-                <>
-                  <div className="small">
-                    Paste anything that looks like questions and answers. Or upload a txt, md, csv, or tsv file.
-                  </div>
-
-                  <div style={{ height: 10 }} />
-
-                  <input
-                    type="file"
-                    accept=".txt,.md,.csv,.tsv,text/plain,text/csv,text/tab-separated-values"
-                    onChange={(e) => handleImportFile(e.target.files?.[0] || null)}
-                  />
-
-                  <div style={{ height: 10 }} />
-
-                  <textarea
-                    style={{ width: "100%", borderRadius: 12, border: "1px solid rgba(255,255,255,0.14)", background: "rgba(0,0,0,0.25)", color: "#e7e9ee", padding: 10, fontFamily: "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, \"Liberation Mono\", \"Courier New\", monospace", fontSize: 12, lineHeight: 1.4 }}
-                    value={importRaw}
-                    onChange={(e) => setImportRaw(e.target.value)}
-                    placeholder={"Paste questions here. Example:\n\n1. What is 2+2?\na) 3\n*b) 4\nc) 5\n\n2. True or False: The sky is blue.\n*a) True\nb) False"}
-                    rows={10}
-                  />
-
-                  <div style={{ height: 10 }} />
-
-                  <div className="small" style={{ display: "flex", justifyContent: "space-between", gap: 12 }}>
-                    <span>Estimated questions: {estimateQuestionCount(importRaw)}</span>
-                    <span>Included: 1,000 questions per month</span>
-                  </div>
-
-                  <div style={{ height: 12 }} />
-
-                  <button className="btn" disabled={!isPaid || importBusy} onClick={() => importToCanvas("convert")}>
-                    {importBusy ? "Working..." : "Export QTI zip"}
-                  </button>
-
-                  <div style={{ height: 10 }} />
-
-                  <button className="btn" disabled={!isPaid || importBusy} onClick={() => importToCanvas("review")}>
-                    {importBusy ? "Working..." : "Export with one review pass"}
-                  </button>
-
-                  {importError && (
-                    <>
-                      <div style={{ height: 10 }} />
-                      <div className="notice" style={{ borderColor: "rgba(255, 99, 99, 0.35)" }}>{importError}</div>
-                    </>
-                  )}
-
-                  {!isPaid && (
-                    <>
-                      <div style={{ height: 10 }} />
-                      <div className="notice">
-                        <b>Locked</b>
-                        <div style={{ marginTop: 6 }}>Smart import is unlocked with a subscription.</div>
-                      </div>
-                    </>
-                  )}
-                </>
-              ) : (
-                <>
-                  <div className="small">
-                    Use our formatted question style for fast, predictable imports. This lane will export without AI soon.
-                  </div>
-
-                  <div style={{ height: 10 }} />
-
-                  <textarea
-                    style={{ width: "100%", borderRadius: 12, border: "1px solid rgba(255,255,255,0.14)", background: "rgba(0,0,0,0.25)", color: "#e7e9ee", padding: 10, fontFamily: "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, \"Liberation Mono\", \"Courier New\", monospace", fontSize: 12, lineHeight: 1.4 }}
-                    value={importRaw}
-                    onChange={(e) => setImportRaw(e.target.value)}
-                    placeholder={"Formatted example:\n\n1. What is 2+3?\na) 6\nb) 1\n*c) 5\nd) 10\n\n2. Which of the following are dinosaurs?\n[ ] Woolly mammoth\n[*] Tyrannosaurus rex\n[*] Triceratops\n[ ] Smilodon fatalis"}
-                    rows={10}
-                  />
-
-                  <div style={{ height: 10 }} />
-
-                  <div className="small">Detected questions: {estimateQuestionCount(importRaw)}</div>
-
-                  <div style={{ height: 12 }} />
-
-                  <button className="btn" disabled type="button">
-                    Export QTI zip
-                  </button>
-
-                  <div style={{ height: 10 }} />
-
-                  <div className="notice">
-                    <b>Next</b>
-                    <div style={{ marginTop: 6 }}>
-                      We will wire this lane to export instantly without AI. For now, use Smart import above.
-                    </div>
-                  </div>
-                </>
-              )}
-            </div>
-
           </div>
         </>
-      )}
+      ) : null}
     </main>
   );
 }
