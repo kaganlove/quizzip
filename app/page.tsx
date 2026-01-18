@@ -40,6 +40,9 @@ export default function LandingPage() {
             <Link className="btn btnPrimary" href="/login?next=/app">
               Log in
             </Link>
+            <Link className="btn btnOutline" href="/signup">
+              Create account
+            </Link>
           </div>
         </header>
 
@@ -50,26 +53,26 @@ export default function LandingPage() {
 
             <p className="p">
               Open Canvas Classic quiz export zips in a clean, readable view, export a Word file with images, and convert
-              question banks into a Canvas-ready QTI zip you can import. Your files stay on your device for preview and
-              formatted conversions.
+              question banks into a Canvas-ready QTI zip you can import.
             </p>
 
             <div className="ctaRow">
-              <Link className="btn btnPrimary" href="/login?next=/app">
+              <Link className="btn btnPrimary btnBig" href="/login?next=/app">
                 Log in
               </Link>
-              <Link className="btn btnGhost" href="/signup">
+              <Link className="btn btnOutline btnBig" href="/signup">
                 Create account
               </Link>
             </div>
 
-            <div className="pillRow" aria-label="Key benefits">
-              <span className="pill">Free QTI preview</span>
-              <span className="pill">Unlimited formatted import</span>
-              <span className="pill">Smart import for any input</span>
-              <span className="pill">Export to Word</span>
-              <span className="pill">Images supported</span>
-            </div>
+            {/* Feature list instead of pills */}
+            <ul className="featureList" aria-label="Key benefits">
+              <li>Free QTI preview</li>
+              <li>Unlimited formatted import</li>
+              <li>Smart import for any input</li>
+              <li>Export to Word</li>
+              <li>Images supported</li>
+            </ul>
 
             <div className="trustRow">
               <div className="trustItem">
@@ -244,18 +247,8 @@ export default function LandingPage() {
           </details>
 
           <details className="qa">
-            <summary>Does it support New Quizzes</summary>
-            <div className="qaBody">Right now it is focused on Canvas Classic quiz export zips and Canvas-ready QTI output.</div>
-          </details>
-
-          <details className="qa">
             <summary>Can I cancel anytime</summary>
             <div className="qaBody">Yes. You can manage billing from the app and cancel whenever you want.</div>
-          </details>
-
-          <details className="qa">
-            <summary>Will images export to Word</summary>
-            <div className="qaBody">Yes. If the export zip includes images, Quizzip includes them in the Word export.</div>
           </details>
         </section>
 
@@ -294,11 +287,10 @@ const css = `
     position:absolute;
     inset:-200px;
     background:
-      radial-gradient(1200px 600px at 18% 10%, rgba(99,102,241,0.28), transparent 60%),
-      radial-gradient(1100px 600px at 82% 30%, rgba(34,197,94,0.18), transparent 55%),
+      radial-gradient(1200px 600px at 18% 10%, rgba(168,85,247,0.28), transparent 60%),
+      radial-gradient(1100px 600px at 82% 30%, rgba(236,72,153,0.18), transparent 55%),
       radial-gradient(900px 520px at 55% 80%, rgba(56,189,248,0.10), transparent 60%);
     pointer-events:none;
-    filter: blur(0px);
   }
 
   .container{
@@ -326,12 +318,7 @@ const css = `
     place-items:center;
     overflow:hidden;
   }
-  .logoImg{
-    width:34px;
-    height:34px;
-    object-fit:contain;
-    display:block;
-  }
+  .logoImg{width:34px; height:34px; object-fit:contain; display:block;}
 
   .brandText{display:flex; flex-direction:column; gap:2px;}
   .brandName{font-weight:900; font-size:18px;}
@@ -350,6 +337,7 @@ const css = `
 
   .actions{display:flex; gap:10px; align-items:center;}
 
+  /* Buttons */
   .btn{
     display:inline-flex;
     align-items:center;
@@ -357,21 +345,39 @@ const css = `
     padding:10px 14px;
     border-radius:14px;
     text-decoration:none;
-    font-weight:900;
+    font-weight:950;
     border:1px solid rgba(255,255,255,0.16);
-    color:rgba(255,255,255,0.92);
+    color:rgba(255,255,255,0.94);
     background:rgba(255,255,255,0.06);
-    transition: transform 120ms ease, background 120ms ease, border 120ms ease;
+    transition: transform 120ms ease, filter 120ms ease, box-shadow 120ms ease, border 120ms ease;
   }
-  .btn:hover{transform: translateY(-1px); background:rgba(255,255,255,0.09); border-color: rgba(255,255,255,0.22);}
+  .btn:hover{transform: translateY(-1px); filter: brightness(1.03);}
   .btn:active{transform: translateY(0px);}
-  .btnPrimary{
-    background:rgba(255,255,255,0.14);
-    border-color: rgba(255,255,255,0.22);
-    color:rgba(255,255,255,0.95);
-  }
-  .btnGhost{background:rgba(255,255,255,0.06);}
   .btn.full{width:100%;}
+  .btnBig{padding:12px 16px; border-radius:16px;}
+
+  .btnPrimary{
+    border-color: rgba(168,85,247,0.50);
+    background: linear-gradient(135deg, rgba(168,85,247,0.95), rgba(236,72,153,0.78));
+    box-shadow:
+      0 12px 28px rgba(168,85,247,0.22),
+      0 10px 24px rgba(236,72,153,0.12);
+  }
+  .btnPrimary:hover{
+    box-shadow:
+      0 14px 34px rgba(168,85,247,0.28),
+      0 12px 26px rgba(236,72,153,0.16);
+  }
+
+  .btnOutline{
+    border-color: rgba(168,85,247,0.45);
+    background: rgba(168,85,247,0.10);
+    color: rgba(255,255,255,0.96);
+  }
+  .btnOutline:hover{
+    border-color: rgba(168,85,247,0.65);
+    background: rgba(168,85,247,0.14);
+  }
 
   .card{
     padding:22px;
@@ -420,20 +426,43 @@ const css = `
     flex-wrap:wrap;
   }
 
-  .pillRow{
+  /* Feature list replaces pills */
+  .featureList{
     margin-top:18px;
-    display:flex;
-    gap:10px;
-    flex-wrap:wrap;
+    padding-left:0;
+    list-style:none;
+    display:grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap:10px 16px;
+    max-width:720px;
   }
-  .pill{
-    padding:7px 10px;
-    border-radius:999px;
+  .featureList li{
+    display:flex;
+    align-items:flex-start;
+    gap:10px;
+    padding:10px 12px;
+    border-radius:14px;
     border:1px solid rgba(255,255,255,0.12);
-    background:rgba(255,255,255,0.06);
-    opacity:0.85;
+    background:rgba(255,255,255,0.05);
     font-size:13px;
-    font-weight:800;
+    font-weight:850;
+    opacity:0.92;
+    line-height:1.25;
+  }
+  .featureList li::before{
+    content:"✓";
+    display:inline-flex;
+    align-items:center;
+    justify-content:center;
+    width:22px;
+    height:22px;
+    border-radius:10px;
+    background: rgba(168,85,247,0.18);
+    border: 1px solid rgba(168,85,247,0.35);
+    color: rgba(255,255,255,0.96);
+    font-weight:1000;
+    flex:0 0 auto;
+    margin-top:0px;
   }
 
   .trustRow{
@@ -628,9 +657,10 @@ const css = `
     .nav{display:none;}
     .hero{grid-template-columns: 1fr;}
     .h1{font-size:42px;}
-    .trustRow{grid-template-columns: 1fr; }
+    .trustRow{grid-template-columns: 1fr;}
     .previewGrid{grid-template-columns: 1fr;}
     .steps{grid-template-columns: 1fr;}
+    .featureList{grid-template-columns: 1fr;}
   }
 
   @media (max-width: 520px){
