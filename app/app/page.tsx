@@ -352,28 +352,59 @@ export default function Page() {
     }
   }
 
+  async function extractTextFromFile(f: File): Promise<string> {
+    const name = f.name.toLowerCase();
+
+    if (name.endsWith(".txt") || name.endsWith(".md") || name.endsWith(".csv") || name.endsWith(".tsv")) {
+      return await f.text();
+    }
+
+    if (name.endsWith(".docx")) {
+      const ab = await f.arrayBuffer();
+      const mammoth = await import("mammoth/mammoth.browser");
+      const result = await mammoth.extractRawText({ arrayBuffer: ab });
+      return (result.value || "").trim();
+    }
+
+    if (name.endsWith(".xlsx") || name.endsWith(".xls")) {
+      const ab = await f.arrayBuffer();
+      const XLSX = await import("xlsx");
+      const wb = XLSX.read(ab, { type: "array" });
+
+      const sheetName = wb.SheetNames[0];
+      const ws = wb.Sheets[sheetName];
+      if (!ws) return "";
+
+      // Convert first sheet to CSV text
+      const csv = XLSX.utils.sheet_to_csv(ws);
+      return csv.trim();
+    }
+
+    throw new Error("Unsupported file type.");
+  }
+
   async function handleImportFile(f: File | null) {
     if (!f) return;
 
-    // Gate the upload itself (your request)
-    if (!isPaid) {
+    // Smart import uploads are paywalled
+    if (importTab === "smart" && !isPaid) {
       setImportError("Smart import file upload is available on the paid plan. Subscribe to unlock.");
       return;
     }
 
     setImportError("");
+
     try {
-      const name = f.name.toLowerCase();
-      const ok = name.endsWith(".txt") || name.endsWith(".md") || name.endsWith(".csv") || name.endsWith(".tsv");
-      if (!ok) {
-        setImportError("For now, Smart import file upload supports txt, md, csv, and tsv. You can also paste content.");
+      const text = await extractTextFromFile(f);
+
+      if (!text || !text.trim()) {
+        setImportError("We could not extract any text from that file. Try copy paste instead.");
         return;
       }
-      const text = await f.text();
+
       setImportRaw(text);
-      setImportTab("smart");
-    } catch {
-      setImportError("Could not read that file.");
+    } catch (e: any) {
+      setImportError(e?.message || "Could not read that file.");
     }
   }
 
@@ -835,24 +866,17 @@ export default function Page() {
           {toolTab === "preview" ? (
             <div className="notice">
               <b>Preview mode</b>
-              <div style={{ marginTop: 8 }}>
-                Upload a Canvas Classic export zip to view assessments and questions in a clean preview.
-              </div>
-              <div className="small" style={{ marginTop: 10 }}>
-                Nothing is uploaded to our servers for preview.
-              </div>
+              <div style={{ marginTop: 8 }}>Upload a Canvas Classic export zip to view assessments and questions.</div>
+              <div className="small" style={{ marginTop: 10 }}>Nothing is uploaded to our servers for preview.</div>
             </div>
           ) : (
             <div className="notice">
               <b>Convert mode</b>
-              <div style={{ marginTop: 8 }}>
-                Paste or upload question content, then export a Canvas import zip.
+              <div style={{ marginTop: 8 }}>Upload or paste your question bank, then export a Canvas import zip.</div>
+              {!isPaid && <div className="small" style={{ marginTop: 10 }}>Smart import is locked until you subscribe.</div>}
+              <div className="small" style={{ marginTop: 10 }}>
+                Google Docs: copy paste, or download as docx and upload.
               </div>
-              {!isPaid && (
-                <div className="small" style={{ marginTop: 10 }}>
-                  Smart import is locked until you subscribe.
-                </div>
-              )}
             </div>
           )}
         </div>
@@ -865,12 +889,7 @@ export default function Page() {
 
               <div style={{ height: 10 }} />
 
-              <input
-                type="file"
-                accept=".zip"
-                onChange={(e) => void onPickFile(e.target.files?.[0] ?? null)}
-                disabled={loading}
-              />
+              <input type="file" accept=".zip" onChange={(e) => void onPickFile(e.target.files?.[0] ?? null)} disabled={loading} />
 
               <div style={{ height: 10 }} />
 
@@ -990,61 +1009,66 @@ export default function Page() {
 
             <div style={{ height: 14 }} />
 
+            <div className="notice">
+              <b>{importTab === "smart" ? "Smart import" : "Formatted import"}</b>
+              <div style={{ marginTop: 8 }}>
+                Upload docx, xlsx, csv, tsv, txt, md, or paste content.
+              </div>
+              <div className="small" style={{ marginTop: 10 }}>
+                Google Docs: copy paste, or download as docx and upload.
+              </div>
+              {importTab === "smart" && !isPaid && (
+                <div className="small" style={{ marginTop: 10 }}>
+                  Smart import is locked until you subscribe.
+                </div>
+              )}
+            </div>
+
+            <div style={{ height: 12 }} />
+
+            <input
+              type="file"
+              accept=".txt,.md,.csv,.tsv,.docx,.xlsx,.xls,text/plain,text/csv,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel"
+              onChange={(e) => void handleImportFile(e.target.files?.[0] || null)}
+              disabled={importTab === "smart" && !isPaid}
+            />
+
+            <div style={{ height: 10 }} />
+
+            <textarea
+              style={{
+                width: "100%",
+                borderRadius: 12,
+                border: "1px solid rgba(255,255,255,0.14)",
+                background: "rgba(0,0,0,0.25)",
+                color: "#e7e9ee",
+                padding: 10,
+                fontFamily:
+                  'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace',
+                fontSize: 12,
+                lineHeight: 1.4,
+              }}
+              value={importRaw}
+              onChange={(e) => setImportRaw(e.target.value)}
+              placeholder={
+                importTab === "smart"
+                  ? "Paste anything that looks like questions and answers."
+                  : "Paste questions in Quizzip formatted style."
+              }
+              rows={12}
+            />
+
+            <div style={{ height: 10 }} />
+
+            <div className="small" style={{ display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
+              <span>Estimated questions: {estimateQuestionCount(importRaw)}</span>
+              <span>{importTab === "smart" ? "Included: 1,000 questions per month" : "Unlimited formatted import"}</span>
+            </div>
+
+            <div style={{ height: 12 }} />
+
             {importTab === "smart" ? (
               <>
-                <div className="notice">
-                  <b>Smart import</b>
-                  <div style={{ marginTop: 8 }}>
-                    Paste anything that looks like questions and answers, or upload a txt, md, csv, or tsv file.
-                  </div>
-                  {!isPaid && (
-                    <div className="small" style={{ marginTop: 10 }}>
-                      Smart import is locked until you subscribe.
-                    </div>
-                  )}
-                </div>
-
-                <div style={{ height: 12 }} />
-
-                <input
-                  type="file"
-                  accept=".txt,.md,.csv,.tsv,text/plain,text/csv,text/tab-separated-values"
-                  onChange={(e) => void handleImportFile(e.target.files?.[0] || null)}
-                  disabled={!isPaid}
-                />
-
-                <div style={{ height: 10 }} />
-
-                <textarea
-                  style={{
-                    width: "100%",
-                    borderRadius: 12,
-                    border: "1px solid rgba(255,255,255,0.14)",
-                    background: "rgba(0,0,0,0.25)",
-                    color: "#e7e9ee",
-                    padding: 10,
-                    fontFamily:
-                      'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace',
-                    fontSize: 12,
-                    lineHeight: 1.4,
-                  }}
-                  value={importRaw}
-                  onChange={(e) => setImportRaw(e.target.value)}
-                  placeholder={
-                    "Paste questions here.\n\n1. What is 2+2?\na) 3\n*b) 4\nc) 5\n\n2. True or False: The sky is blue.\n*a) True\nb) False"
-                  }
-                  rows={12}
-                />
-
-                <div style={{ height: 10 }} />
-
-                <div className="small" style={{ display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
-                  <span>Estimated questions: {estimateQuestionCount(importRaw)}</span>
-                  <span>Included: 1,000 questions per month</span>
-                </div>
-
-                <div style={{ height: 12 }} />
-
                 <button className="btn btnPrimary" disabled={!isPaid || importBusy} onClick={() => void importToCanvas("convert")}>
                   {importBusy ? "Working..." : "Export Canvas import zip"}
                 </button>
@@ -1054,64 +1078,9 @@ export default function Page() {
                 <button className="btn btnOutline" disabled={!isPaid || importBusy} onClick={() => void importToCanvas("review")}>
                   {importBusy ? "Working..." : "Export with one review pass"}
                 </button>
-
-                {importError && (
-                  <>
-                    <div style={{ height: 10 }} />
-                    <div className="notice" style={{ borderColor: "rgba(255, 99, 99, 0.35)" }}>
-                      {importError}
-                    </div>
-                  </>
-                )}
-
-                {!isPaid && (
-                  <>
-                    <div style={{ height: 12 }} />
-                    <div className="notice">
-                      <b>Locked</b>
-                      <div style={{ marginTop: 6 }}>Subscribe to unlock Smart import and exports.</div>
-                    </div>
-                  </>
-                )}
               </>
             ) : (
               <>
-                <div className="notice">
-                  <b>Formatted import</b>
-                  <div style={{ marginTop: 8 }}>
-                    Use the Quizzip formatted style for fast, predictable imports. This will export without AI soon.
-                  </div>
-                </div>
-
-                <div style={{ height: 12 }} />
-
-                <textarea
-                  style={{
-                    width: "100%",
-                    borderRadius: 12,
-                    border: "1px solid rgba(255,255,255,0.14)",
-                    background: "rgba(0,0,0,0.25)",
-                    color: "#e7e9ee",
-                    padding: 10,
-                    fontFamily:
-                      'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace',
-                    fontSize: 12,
-                    lineHeight: 1.4,
-                  }}
-                  value={importRaw}
-                  onChange={(e) => setImportRaw(e.target.value)}
-                  placeholder={
-                    "Formatted example:\n\n1. What is 2+3?\na) 6\nb) 1\n*c) 5\nd) 10\n\n2. Which of the following are dinosaurs?\n[ ] Woolly mammoth\n[*] Tyrannosaurus rex\n[*] Triceratops\n[ ] Smilodon fatalis"
-                  }
-                  rows={12}
-                />
-
-                <div style={{ height: 10 }} />
-
-                <div className="small">Detected questions: {estimateQuestionCount(importRaw)}</div>
-
-                <div style={{ height: 12 }} />
-
                 <button className="btn btnPrimary" disabled type="button">
                   Export Canvas import zip
                 </button>
@@ -1121,8 +1090,17 @@ export default function Page() {
                 <div className="notice">
                   <b>Next</b>
                   <div style={{ marginTop: 6 }}>
-                    We will wire this lane to export instantly without AI. For now, use Smart import.
+                    We will wire this lane to export instantly without AI. For now, Smart import handles the conversion.
                   </div>
+                </div>
+              </>
+            )}
+
+            {importError && (
+              <>
+                <div style={{ height: 10 }} />
+                <div className="notice" style={{ borderColor: "rgba(255, 99, 99, 0.35)" }}>
+                  {importError}
                 </div>
               </>
             )}
