@@ -322,7 +322,7 @@ export default function LandingPage() {
 const css = `
   .wrap{
     min-height:100vh;
-    padding:56px 18px;
+    padding:28px 18px;
     background:
       radial-gradient(1200px 600px at 18% 10%, rgba(99,102,241,0.28), transparent 60%),
       radial-gradient(1100px 600px at 82% 30%, rgba(34,197,94,0.18), transparent 55%),
@@ -347,7 +347,7 @@ const css = `
     align-items:center;
     justify-content:space-between;
     gap:14px;
-    margin-bottom:52px;
+    margin-bottom:32px;
   }
 
   .brand{
@@ -724,8 +724,8 @@ const css = `
   }
 
   @media (max-width: 520px){
-    .wrap{padding:52px 14px;}
-    .topbar{margin-bottom:34px;}
+    .wrap{padding:22px 14px;}
+    .topbar{margin-bottom:24px;}
     .card{padding:20px;}
     .actions{gap:8px;}
     .btn{padding:10px 12px;}
