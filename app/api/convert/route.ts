@@ -14,16 +14,38 @@ function monthStartUtc(d = new Date()) {
   return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), 1));
 }
 
+function extractAccessToken(req: Request, body: any) {
+  // 1) Authorization header: "Bearer <token>"
+  const auth = req.headers.get("authorization") || req.headers.get("Authorization");
+  if (auth && auth.toLowerCase().startsWith("bearer ")) {
+    const t = auth.slice(7).trim();
+    if (t) return t;
+  }
+
+  // 2) JSON body fallbacks
+  const t =
+    body?.access_token ||
+    body?.accessToken ||
+    body?.token;
+
+  if (typeof t === "string" && t.trim()) return t.trim();
+  return null;
+}
+
 export async function POST(req: Request) {
   try {
-    const body = await req.json();
-    const access_token = body?.access_token;
+    const body = await req.json().catch(() => ({}));
     const raw = body?.raw;
     const doReview = Boolean(body?.do_review);
 
-    if (!access_token || typeof access_token !== "string") {
-      return NextResponse.json({ error: "Missing access token" }, { status: 401 });
+    const accessToken = extractAccessToken(req, body);
+    if (!accessToken) {
+      return NextResponse.json(
+        { error: "Missing access token. Please log in again and retry." },
+        { status: 401 }
+      );
     }
+
     if (!raw || typeof raw !== "string" || raw.trim().length < 3) {
       return NextResponse.json({ error: "Missing input" }, { status: 400 });
     }
@@ -35,17 +57,25 @@ export async function POST(req: Request) {
       auth: { persistSession: false, autoRefreshToken: false },
     });
 
-    const { data: userData, error: userErr } = await supabase.auth.getUser(access_token);
+    const { data: userData, error: userErr } = await supabase.auth.getUser(accessToken);
     if (userErr || !userData?.user) {
-      return NextResponse.json({ error: "Invalid session" }, { status: 401 });
+      return NextResponse.json(
+        { error: "Invalid session. Please log out and log back in." },
+        { status: 401 }
+      );
     }
 
     const userId = userData.user.id;
 
-    const { data: subRow } = await supabase.from("subscriptions").select("status").eq("user_id", userId).maybeSingle();
+    const { data: subRow } = await supabase
+      .from("subscriptions")
+      .select("status")
+      .eq("user_id", userId)
+      .maybeSingle();
 
     const status = (subRow as any)?.status ?? "";
     const isPaid = status === "active" || status === "trialing";
+
     if (!isPaid) {
       return NextResponse.json({ error: "Subscription required" }, { status: 402 });
     }
@@ -83,17 +113,17 @@ export async function POST(req: Request) {
     if (strict.quiz) {
       final = strict.quiz;
     } else {
-      // 2) Fall back to OpenAI when input is not in the strict formats
+      // 2) Fall back to OpenAI when input is not in strict formats
       const convert = await openAiConvertToJson({ raw, mode: "convert" });
       final = convert.data;
-      convertUsage = convert.usage;
+      convertUsage = convert.usage ?? convertUsage;
     }
 
     // Optional review pass (even for strict parsed content)
     if (doReview) {
       const review = await openAiConvertToJson({ raw: JSON.stringify(final), mode: "review" });
       final = review.data;
-      reviewUsage = review.usage;
+      reviewUsage = review.usage ?? reviewUsage;
     }
 
     const items = final.items ?? [];
@@ -109,8 +139,8 @@ export async function POST(req: Request) {
 
     const zipBytes = await buildQtiZip(final.title || "Quiz", items);
 
-    const inputTokens = convertUsage.input_tokens + reviewUsage.input_tokens;
-    const outputTokens = convertUsage.output_tokens + reviewUsage.output_tokens;
+    const inputTokens = (convertUsage.input_tokens ?? 0) + (reviewUsage.input_tokens ?? 0);
+    const outputTokens = (convertUsage.output_tokens ?? 0) + (reviewUsage.output_tokens ?? 0);
 
     await supabase.from("conversion_usage").upsert(
       {
