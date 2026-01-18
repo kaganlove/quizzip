@@ -117,9 +117,7 @@ export default function LandingPage() {
               Start now
             </Link>
 
-            <div className="finePrint">
-              Cancel anytime. Preview and formatted import stay local. Smart import uses AI and is metered.
-            </div>
+            <div className="finePrint">Cancel anytime. Preview and formatted import stay local. Smart import uses AI and is metered.</div>
           </aside>
         </section>
 
@@ -147,9 +145,7 @@ export default function LandingPage() {
                   <div className="bulletDot" aria-hidden="true" />
                   <div>
                     <div className="bulletTitle">Two import lanes</div>
-                    <div className="bulletBody">
-                      Use formatted import for instant conversion, or Smart import to normalize almost anything.
-                    </div>
+                    <div className="bulletBody">Use formatted import for instant conversion, or Smart import to normalize almost anything.</div>
                   </div>
                 </div>
 
@@ -251,9 +247,7 @@ export default function LandingPage() {
 
           <details className="qa">
             <summary>What does unlimited formatted import mean</summary>
-            <div className="qaBody">
-              If you use our formatted input style, conversion and export are unlimited because it does not require AI.
-            </div>
+            <div className="qaBody">If you use our formatted input style, conversion and export are unlimited because it does not require AI.</div>
           </details>
 
           <details className="qa">
@@ -263,9 +257,7 @@ export default function LandingPage() {
 
           <details className="qa">
             <summary>What are the Smart import limits per upload</summary>
-            <div className="qaBody">
-              If you hit the limit, we will ask you to split the content into smaller batches for best results.
-            </div>
+            <div className="qaBody">If you hit the limit, we will ask you to split the content into smaller batches for best results.</div>
           </details>
 
           <details className="qa">
@@ -275,16 +267,12 @@ export default function LandingPage() {
 
           <details className="qa">
             <summary>Will the QTI zip import cleanly into Canvas</summary>
-            <div className="qaBody">
-              Yes for Canvas Classic. We still recommend importing into a sandbox course first, especially for high stakes exams.
-            </div>
+            <div className="qaBody">Yes for Canvas Classic. We still recommend importing into a sandbox course first, especially for high stakes exams.</div>
           </details>
 
           <details className="qa">
             <summary>Can multiple people use one account</summary>
-            <div className="qaBody">
-              A single subscription is intended for one user. If you need a department license, reach out and we will set it up.
-            </div>
+            <div className="qaBody">A single subscription is intended for one user. If you need a department license, reach out and we will set it up.</div>
           </details>
 
           <details className="qa">
@@ -320,19 +308,30 @@ export default function LandingPage() {
 }
 
 const css = `
+  html, body{
+    background:#070a12;
+  }
+
   .wrap{
     min-height:100vh;
-    padding:28px 18px;
+    padding:16px 18px;
+    color:rgba(255,255,255,0.92);
+    position:relative;
+    overflow:hidden;
+    background: transparent;
+  }
+
+  .wrap::before{
+    content:"";
+    position:fixed;
+    inset:0;
+    z-index:-1;
     background:
       radial-gradient(1200px 600px at 18% 10%, rgba(99,102,241,0.28), transparent 60%),
       radial-gradient(1100px 600px at 82% 30%, rgba(34,197,94,0.18), transparent 55%),
       radial-gradient(900px 520px at 55% 80%, rgba(56,189,248,0.10), transparent 60%),
       #070a12;
     background-repeat:no-repeat;
-    background-attachment:fixed;
-    color:rgba(255,255,255,0.92);
-    position:relative;
-    overflow:hidden;
   }
 
   .container{
@@ -347,7 +346,7 @@ const css = `
     align-items:center;
     justify-content:space-between;
     gap:14px;
-    margin-bottom:32px;
+    margin-bottom:22px;
   }
 
   .brand{
@@ -724,8 +723,8 @@ const css = `
   }
 
   @media (max-width: 520px){
-    .wrap{padding:22px 14px;}
-    .topbar{margin-bottom:24px;}
+    .wrap{padding:12px 14px;}
+    .topbar{margin-bottom:18px;}
     .card{padding:20px;}
     .actions{gap:8px;}
     .btn{padding:10px 12px;}
