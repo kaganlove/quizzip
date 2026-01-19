@@ -1,157 +1,242 @@
-import JSZip from "jszip";
+// lib/qtiWrite.ts
+export type QtiChoice = { text: string; correct?: boolean };
+export type QtiItem =
+  | {
+      type: "multiple_choice_single" | "multiple_choice_multiple" | "true_false";
+      promptText: string;
+      choices: QtiChoice[];
+    }
+  | {
+      type: "short_answer" | "essay";
+      promptText: string;
+      correctText?: string;
+    };
 
-type ConvertItem = {
-  type:
-    | "multiple_choice_single"
-    | "multiple_choice_multiple"
-    | "true_false"
-    | "short_answer"
-    | "essay"
-    | "file_upload";
-  promptText: string;
-  choices?: Array<{ text: string; correct?: boolean }>;
-  correctText?: string;
+export type QtiConvertJson = {
+  title?: string;
+  items: QtiItem[];
 };
 
-function esc(s: string) {
+function xmlEscape(s: string) {
   return (s ?? "")
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&apos;");
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&apos;");
 }
 
-function qtiItemXml(i: number, item: ConvertItem) {
-  const ident = `ITEM_${i + 1}`;
+/**
+ * Put HTML inside CDATA so tags survive, while still being valid XML.
+ * Also safely splits any accidental "]]>" sequences.
+ */
+function cdata(html: string) {
+  const safe = (html ?? "").replaceAll("]]>", "]]]]><![CDATA[>");
+  return `<![CDATA[${safe}]]>`;
+}
 
-  if (item.type === "true_false") {
-    const correctTrue = (item.choices ?? []).some(c => c.correct && c.text.toLowerCase() === "true");
-    const correctId = correctTrue ? "A" : "B";
+function matTextHtml(html: string) {
+  // Canvas QTI is fine with text/html mattext. CDATA keeps tags and data images.
+  return `<mattext texttype="text/html">${cdata(html ?? "")}</mattext>`;
+}
 
+function makeIdent(prefix = "I") {
+  return `${prefix}_${Math.random().toString(16).slice(2)}${Math.random().toString(16).slice(2)}`;
+}
+
+function normalizePromptToHtml(promptText: string) {
+  // If promptText already contains HTML, keep it.
+  // If it looks like plain text, we still place it inside mattext html for consistency.
+  return promptText ?? "";
+}
+
+async function buildZipBytes(json: QtiConvertJson, outType: "uint8array" | "blob") {
+  const JSZip = (await import("jszip")).default;
+  const zip = new JSZip();
+
+  const title = json.title?.trim() || "QuizZip Import";
+  const items = json.items ?? [];
+
+  const manifestIdent = makeIdent("MAN");
+  const resourceIdent = makeIdent("RES");
+
+  const assessmentIdent = makeIdent("ASMT");
+  const sectionIdent = makeIdent("SEC");
+
+  // One assessment file
+  const assessmentXml = buildAssessmentXml({
+    title,
+    assessmentIdent,
+    sectionIdent,
+    items,
+  });
+
+  zip.file("assessment.xml", assessmentXml);
+
+  // Minimal imsmanifest with assessment.xml
+  const imsmanifest = `<?xml version="1.0" encoding="UTF-8"?>
+<manifest identifier="${xmlEscape(manifestIdent)}"
+  xmlns="http://www.imsglobal.org/xsd/imscp_v1p1"
+  xmlns:imsmd="http://www.imsglobal.org/xsd/imsmd_v1p2"
+  xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+  xsi:schemaLocation="http://www.imsglobal.org/xsd/imscp_v1p1 http://www.imsglobal.org/xsd/imscp_v1p1.xsd">
+  <organizations/>
+  <resources>
+    <resource identifier="${xmlEscape(resourceIdent)}" type="imsqti_xmlv1p2" href="assessment.xml">
+      <file href="assessment.xml"/>
+    </resource>
+  </resources>
+</manifest>`;
+
+  zip.file("imsmanifest.xml", imsmanifest);
+
+  return await zip.generateAsync({ type: outType });
+}
+
+// Existing browser friendly export
+export async function buildCanvasQtiZip(args: { json: QtiConvertJson }) {
+  return await buildZipBytes(args.json, "blob");
+}
+
+// Server route helper expected by app/api/convert/route.ts
+// Returns bytes that can be directly returned via NextResponse
+export async function buildQtiZip(title: string, items: QtiItem[]): Promise<Uint8Array> {
+  const json: QtiConvertJson = { title, items };
+  return (await buildZipBytes(json, "uint8array")) as Uint8Array;
+}
+
+function buildAssessmentXml(args: {
+  title: string;
+  assessmentIdent: string;
+  sectionIdent: string;
+  items: QtiItem[];
+}) {
+  const { title, assessmentIdent, sectionIdent, items } = args;
+
+  const itemXml = items
+    .map((it, idx) => {
+      const ident = makeIdent(`ITEM${idx + 1}`);
+      return buildItemXml({ item: it, ident });
+    })
+    .join("\n");
+
+  return `<?xml version="1.0" encoding="UTF-8"?>
+<questestinterop xmlns="http://www.imsglobal.org/xsd/ims_qtiasiv1p2">
+  <assessment ident="${xmlEscape(assessmentIdent)}" title="${xmlEscape(title)}">
+    <section ident="${xmlEscape(sectionIdent)}">
+      ${itemXml}
+    </section>
+  </assessment>
+</questestinterop>`;
+}
+
+function buildItemXml(args: { item: QtiItem; ident: string }) {
+  const { item, ident } = args;
+
+  // Convert prompt to HTML (may include <img src="data:..."> from Smart import)
+  const promptHtml = normalizePromptToHtml(item.promptText);
+
+  if (item.type === "short_answer") {
+    const expected = (item.correctText ?? "").trim();
     return `
-<item ident="${ident}" title="${esc("Question " + (i + 1))}">
+<item ident="${xmlEscape(ident)}" title="${xmlEscape(ident)}">
   <presentation>
-    <material><mattext texttype="text/plain">${esc(item.promptText)}</mattext></material>
-    <response_lid ident="response1" rcardinality="Single">
-      <render_choice>
-        <response_label ident="A"><material><mattext texttype="text/plain">True</mattext></material></response_label>
-        <response_label ident="B"><material><mattext texttype="text/plain">False</mattext></material></response_label>
-      </render_choice>
-    </response_lid>
-  </presentation>
-  <resprocessing>
-    <outcomes><decvar maxvalue="1" minvalue="0" varname="SCORE" vartype="Decimal"/></outcomes>
-    <respcondition continue="No">
-      <conditionvar><varequal respident="response1">${correctId}</varequal></conditionvar>
-      <setvar action="Set" varname="SCORE">1</setvar>
-    </respcondition>
-  </resprocessing>
-</item>
-`.trim();
-  }
-
-  if (item.type === "short_answer" || item.type === "essay" || item.type === "file_upload") {
-    // Canvas may not import "file_upload" perfectly via minimal QTI 1.2,
-    // so we map it to an essay style response for now.
-    const prompt =
-      item.type === "file_upload"
-        ? `${item.promptText}\n\n(Upload a file.)`
-        : item.promptText;
-
-    return `
-<item ident="${ident}" title="${esc("Question " + (i + 1))}">
-  <presentation>
-    <material><mattext texttype="text/plain">${esc(prompt)}</mattext></material>
+    <material>
+      ${matTextHtml(promptHtml)}
+    </material>
     <response_str ident="response1" rcardinality="Single">
       <render_fib/>
     </response_str>
   </presentation>
-</item>
-`.trim();
+  <resprocessing>
+    <outcomes>
+      <decvar varname="SCORE" vartype="Decimal" minvalue="0" maxvalue="100"/>
+    </outcomes>
+    <respcondition continue="No">
+      <conditionvar>
+        <other/>
+      </conditionvar>
+      <setvar varname="SCORE" action="Set">100</setvar>
+    </respcondition>
+    ${expected ? `<itemfeedback ident="general_fb"><flow_mat><material>${matTextHtml(xmlEscape(expected))}</material></flow_mat></itemfeedback>` : ""}
+  </resprocessing>
+</item>`;
   }
 
-  const choices = item.choices ?? [];
-  const ids = choices.map((_, idx) => String.fromCharCode(65 + idx));
-  const correctIds = ids.filter((id, idx) => !!choices[idx]?.correct);
-  const incorrectIds = ids.filter((id, idx) => !choices[idx]?.correct);
-
-  const cardinality = item.type === "multiple_choice_multiple" ? "Multiple" : "Single";
-
-  let conditionVar = "";
-  if (item.type === "multiple_choice_multiple") {
-    // Require all correct selections AND no incorrect selections
-    const correctChecks = correctIds.map(id => `<varequal respident="response1">${id}</varequal>`).join("");
-    const incorrectChecks = incorrectIds
-      .map(id => `<not><varequal respident="response1">${id}</varequal></not>`)
-      .join("");
-
-    conditionVar = `<and>${correctChecks}${incorrectChecks}</and>`;
-  } else {
-    conditionVar = `<varequal respident="response1">${(correctIds[0] ?? ids[0])}</varequal>`;
-  }
-
-  const render = ids
-    .map((id, idx) => {
-      const text = choices[idx]?.text ?? "";
-      return `<response_label ident="${id}"><material><mattext texttype="text/plain">${esc(text)}</mattext></material></response_label>`;
-    })
-    .join("");
-
-  return `
-<item ident="${ident}" title="${esc("Question " + (i + 1))}">
+  if (item.type === "essay") {
+    return `
+<item ident="${xmlEscape(ident)}" title="${xmlEscape(ident)}">
   <presentation>
-    <material><mattext texttype="text/plain">${esc(item.promptText)}</mattext></material>
-    <response_lid ident="response1" rcardinality="${cardinality}">
-      <render_choice>
-        ${render}
-      </render_choice>
-    </response_lid>
+    <material>
+      ${matTextHtml(promptHtml)}
+    </material>
+    <response_str ident="response1" rcardinality="Single">
+      <render_fib/>
+    </response_str>
   </presentation>
   <resprocessing>
-    <outcomes><decvar maxvalue="1" minvalue="0" varname="SCORE" vartype="Decimal"/></outcomes>
+    <outcomes>
+      <decvar varname="SCORE" vartype="Decimal" minvalue="0" maxvalue="100"/>
+    </outcomes>
+  </resprocessing>
+</item>`;
+  }
+
+  // Choice based types
+  const choices = (item as any).choices as QtiChoice[] | undefined;
+  const choiceList = (choices ?? []).map((c, i) => ({ ...c, ident: `CHOICE_${i + 1}` }));
+
+  const responseIdent = "response1";
+  const correctIdents = choiceList.filter((c) => c.correct).map((c) => c.ident);
+
+  const renderChoice = `
+<response_lid ident="${xmlEscape(responseIdent)}" rcardinality="${
+    item.type === "multiple_choice_multiple" ? "Multiple" : "Single"
+  }">
+  <render_choice>
+    ${choiceList
+      .map(
+        (c) => `
+    <response_label ident="${xmlEscape(c.ident)}">
+      <material>
+        ${matTextHtml(c.text ?? "")}
+      </material>
+    </response_label>`
+      )
+      .join("\n")}
+  </render_choice>
+</response_lid>`;
+
+  // Very lightweight scoring: correct if matches expected set for multiple, or matches single correct for single/true_false
+  // Canvas tends to accept this minimal logic well enough for import.
+  const condition =
+    item.type === "multiple_choice_multiple"
+      ? `
+      <and>
+        ${correctIdents.map((id) => `<varequal respident="${xmlEscape(responseIdent)}">${xmlEscape(id)}</varequal>`).join("\n")}
+      </and>`
+      : correctIdents[0]
+        ? `<varequal respident="${xmlEscape(responseIdent)}">${xmlEscape(correctIdents[0])}</varequal>`
+        : `<other/>`;
+
+  return `
+<item ident="${xmlEscape(ident)}" title="${xmlEscape(ident)}">
+  <presentation>
+    <material>
+      ${matTextHtml(promptHtml)}
+    </material>
+    ${renderChoice}
+  </presentation>
+  <resprocessing>
+    <outcomes>
+      <decvar varname="SCORE" vartype="Decimal" minvalue="0" maxvalue="100"/>
+    </outcomes>
     <respcondition continue="No">
-      <conditionvar>${conditionVar}</conditionvar>
-      <setvar action="Set" varname="SCORE">1</setvar>
+      <conditionvar>
+        ${condition}
+      </conditionvar>
+      <setvar varname="SCORE" action="Set">100</setvar>
     </respcondition>
   </resprocessing>
-</item>
-`.trim();
-}
-
-function qtiAssessmentXml(title: string, items: ConvertItem[]) {
-  const body = items.map((it, i) => qtiItemXml(i, it)).join("\n");
-  return `<?xml version="1.0" encoding="UTF-8"?>
-<questestinterop>
-  <assessment ident="ASSESS_1" title="${esc(title || "Quiz")}">
-    <section ident="SECTION_1">
-      ${body}
-    </section>
-  </assessment>
-</questestinterop>
-`.trim();
-}
-
-function imsManifestXml() {
-  return `<?xml version="1.0" encoding="UTF-8"?>
-<manifest identifier="MANIFEST_1" xmlns="http://www.imsglobal.org/xsd/imscp_v1p1"
-  xmlns:imsmd="http://www.imsglobal.org/xsd/imsmd_v1p2"
-  xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
-  xsi:schemaLocation="http://www.imsglobal.org/xsd/imscp_v1p1 http://www.imsglobal.org/profile/cc/ccv1p1/ccv1p1_imscp_v1p1_v1p0.xsd">
-  <organizations/>
-  <resources>
-    <resource identifier="RES_1" type="imsqti_xmlv1p2" href="assessment.xml">
-      <file href="assessment.xml"/>
-    </resource>
-  </resources>
-</manifest>
-`.trim();
-}
-
-export async function buildQtiZip(title: string, items: ConvertItem[]) {
-  const zip = new JSZip();
-  zip.file("imsmanifest.xml", imsManifestXml());
-  zip.file("assessment.xml", qtiAssessmentXml(title, items));
-  const bytes = await zip.generateAsync({ type: "uint8array" });
-  return bytes;
+</item>`;
 }

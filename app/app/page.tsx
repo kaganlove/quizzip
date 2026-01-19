@@ -352,7 +352,33 @@ export default function Page() {
     }
   }
 
-  async function extractTextFromFile(f: File): Promise<string> {
+  // DOCX helpers:
+  // - Smart import: extract HTML with inline base64 images so <img src="data:..."> survives AI + QTI generation
+  // - Formatted import: keep raw text extraction (no HTML) so strict formatting still works
+  async function extractDocxAsRawText(ab: ArrayBuffer): Promise<string> {
+    const mammoth = await import("mammoth/mammoth.browser");
+    const result = await mammoth.extractRawText({ arrayBuffer: ab });
+    return (result.value || "").trim();
+  }
+
+  async function extractDocxAsHtmlWithImages(ab: ArrayBuffer): Promise<string> {
+    const mammoth = await import("mammoth/mammoth.browser");
+
+    const result = await mammoth.convertToHtml(
+      { arrayBuffer: ab },
+      {
+        convertImage: mammoth.images.inline(async (image: any) => {
+          const b64 = await image.read("base64");
+          const contentType = image.contentType || "image/png";
+          return { src: `data:${contentType};base64,${b64}` };
+        }),
+      }
+    );
+
+    return (result.value || "").trim();
+  }
+
+  async function extractTextFromFile(f: File, opts: { preserveDocxImages: boolean }): Promise<string> {
     const name = f.name.toLowerCase();
 
     if (name.endsWith(".txt") || name.endsWith(".md") || name.endsWith(".csv") || name.endsWith(".tsv")) {
@@ -361,9 +387,13 @@ export default function Page() {
 
     if (name.endsWith(".docx")) {
       const ab = await f.arrayBuffer();
-      const mammoth = await import("mammoth/mammoth.browser");
-      const result = await mammoth.extractRawText({ arrayBuffer: ab });
-      return (result.value || "").trim();
+      if (opts.preserveDocxImages) {
+        // Smart import path: HTML + inline images
+        const html = await extractDocxAsHtmlWithImages(ab);
+        return html;
+      }
+      // Formatted import path: plain text
+      return await extractDocxAsRawText(ab);
     }
 
     if (name.endsWith(".xlsx") || name.endsWith(".xls")) {
@@ -395,7 +425,8 @@ export default function Page() {
     setImportError("");
 
     try {
-      const text = await extractTextFromFile(f);
+      const preserveDocxImages = importTab === "smart";
+      const text = await extractTextFromFile(f, { preserveDocxImages });
 
       if (!text || !text.trim()) {
         setImportError("We could not extract any text from that file. Try copy paste instead.");

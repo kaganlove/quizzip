@@ -281,7 +281,7 @@ function normalizeRef(raw: string): string {
 
 function looksLikeExternalUrl(s: string): boolean {
   const t = s.trim().toLowerCase();
-  return t.startsWith("http://") || t.startsWith("https://") || t.startsWith("data:");
+  return t.startsWith("http://") || t.startsWith("https://") || t.startsWith("data:") || t.startsWith("blob:");
 }
 
 function isImagePath(p: string): boolean {

@@ -23,10 +23,7 @@ function extractAccessToken(req: Request, body: any) {
   }
 
   // 2) JSON body fallbacks
-  const t =
-    body?.access_token ||
-    body?.accessToken ||
-    body?.token;
+  const t = body?.access_token || body?.accessToken || body?.token;
 
   if (typeof t === "string" && t.trim()) return t.trim();
   return null;
@@ -36,14 +33,15 @@ export async function POST(req: Request) {
   try {
     const body = await req.json().catch(() => ({}));
     const raw = body?.raw;
-    const doReview = Boolean(body?.do_review);
+
+    // Backward compatible:
+    // - existing: do_review boolean
+    // - client currently sends: mode: "review"
+    const doReview = Boolean(body?.do_review) || body?.mode === "review";
 
     const accessToken = extractAccessToken(req, body);
     if (!accessToken) {
-      return NextResponse.json(
-        { error: "Missing access token. Please log in again and retry." },
-        { status: 401 }
-      );
+      return NextResponse.json({ error: "Missing access token. Please log in again and retry." }, { status: 401 });
     }
 
     if (!raw || typeof raw !== "string" || raw.trim().length < 3) {
@@ -59,19 +57,12 @@ export async function POST(req: Request) {
 
     const { data: userData, error: userErr } = await supabase.auth.getUser(accessToken);
     if (userErr || !userData?.user) {
-      return NextResponse.json(
-        { error: "Invalid session. Please log out and log back in." },
-        { status: 401 }
-      );
+      return NextResponse.json({ error: "Invalid session. Please log out and log back in." }, { status: 401 });
     }
 
     const userId = userData.user.id;
 
-    const { data: subRow } = await supabase
-      .from("subscriptions")
-      .select("status")
-      .eq("user_id", userId)
-      .maybeSingle();
+    const { data: subRow } = await supabase.from("subscriptions").select("status").eq("user_id", userId).maybeSingle();
 
     const status = (subRow as any)?.status ?? "";
     const isPaid = status === "active" || status === "trialing";
@@ -137,6 +128,7 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "This job would exceed your monthly limit" }, { status: 429 });
     }
 
+    // buildQtiZip returns bytes suitable for NextResponse
     const zipBytes = await buildQtiZip(final.title || "Quiz", items);
 
     const inputTokens = (convertUsage.input_tokens ?? 0) + (reviewUsage.input_tokens ?? 0);
