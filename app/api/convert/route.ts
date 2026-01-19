@@ -29,6 +29,51 @@ function extractAccessToken(req: Request, body: any) {
   return null;
 }
 
+function buildImageMap(images: any): Record<string, string> {
+  const map: Record<string, string> = {};
+  if (!Array.isArray(images)) return map;
+
+  for (const it of images) {
+    const id = typeof it?.id === "string" ? it.id.trim() : "";
+    const src = typeof it?.src === "string" ? it.src.trim() : "";
+    if (!id || !src) continue;
+    map[id] = src;
+  }
+  return map;
+}
+
+function replaceImageTokensInString(s: string, map: Record<string, string>): string {
+  if (!s) return s;
+
+  // matches quizzip:QUIZZIP_IMAGE_1
+  return s.replace(/quizzip:(QUIZZIP_IMAGE_\d+)/g, (_m, id) => {
+    const repl = map[id];
+    return repl ? repl : _m;
+  });
+}
+
+function deepReplaceImageTokens<T>(obj: T, map: Record<string, string>): T {
+  if (!obj) return obj;
+
+  if (typeof obj === "string") {
+    return replaceImageTokensInString(obj, map) as any;
+  }
+
+  if (Array.isArray(obj)) {
+    return obj.map((v) => deepReplaceImageTokens(v, map)) as any;
+  }
+
+  if (typeof obj === "object") {
+    const out: any = {};
+    for (const [k, v] of Object.entries(obj as any)) {
+      out[k] = deepReplaceImageTokens(v as any, map);
+    }
+    return out;
+  }
+
+  return obj;
+}
+
 export async function POST(req: Request) {
   try {
     const body = await req.json().catch(() => ({}));
@@ -47,6 +92,8 @@ export async function POST(req: Request) {
     if (!raw || typeof raw !== "string" || raw.trim().length < 3) {
       return NextResponse.json({ error: "Missing input" }, { status: 400 });
     }
+
+    const imagesMap = buildImageMap(body?.images);
 
     const supabaseUrl = requireEnv("NEXT_PUBLIC_SUPABASE_URL");
     const serviceRole = requireEnv("SUPABASE_SERVICE_ROLE_KEY");
@@ -115,6 +162,11 @@ export async function POST(req: Request) {
       const review = await openAiConvertToJson({ raw: JSON.stringify(final), mode: "review" });
       final = review.data;
       reviewUsage = review.usage ?? reviewUsage;
+    }
+
+    // Restore any quizzip image tokens to real data URLs before generating QTI
+    if (imagesMap && Object.keys(imagesMap).length > 0) {
+      final = deepReplaceImageTokens(final, imagesMap);
     }
 
     const items = final.items ?? [];

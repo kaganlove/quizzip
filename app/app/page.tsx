@@ -45,6 +45,9 @@ export default function Page() {
   const [importBusy, setImportBusy] = useState<boolean>(false);
   const [importError, setImportError] = useState<string>("");
 
+  // Smart import image map (kept in memory only)
+  const [importImages, setImportImages] = useState<Array<{ id: string; src: string }>>([]);
+
   const formatDate = (iso: string | null) => {
     if (!iso) return "";
     try {
@@ -212,6 +215,11 @@ export default function Page() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [accessToken, subStatus, didBootstrapSync]);
 
+  // If user switches away from Smart import, drop any in memory images map
+  useEffect(() => {
+    if (importTab !== "smart") setImportImages([]);
+  }, [importTab]);
+
   function renderCorrect(q: Item) {
     const letters: string[] = [];
     const texts: string[] = [];
@@ -334,7 +342,7 @@ export default function Page() {
           "Content-Type": "application/json",
           Authorization: `Bearer ${accessToken}`,
         },
-        body: JSON.stringify({ raw, mode }),
+        body: JSON.stringify({ raw, mode, images: importImages }),
       });
 
       if (!res.ok) {
@@ -353,15 +361,15 @@ export default function Page() {
   }
 
   // DOCX helpers:
-  // - Smart import: extract HTML with inline base64 images so <img src="data:..."> survives AI + QTI generation
-  // - Formatted import: keep raw text extraction (no HTML) so strict formatting still works
+  // - Smart import: extract HTML but replace base64 images with quizzip tokens to avoid huge OpenAI outputs
+  // - Formatted import: keep raw text extraction (no HTML)
   async function extractDocxAsRawText(ab: ArrayBuffer): Promise<string> {
     const mammoth = await import("mammoth/mammoth.browser");
     const result = await mammoth.extractRawText({ arrayBuffer: ab });
     return (result.value || "").trim();
   }
 
-  async function extractDocxAsHtmlWithImages(ab: ArrayBuffer): Promise<string> {
+  async function extractDocxAsHtmlWithTokens(ab: ArrayBuffer): Promise<{ html: string; images: Array<{ id: string; src: string }> }> {
     const mammoth = await import("mammoth/mammoth.browser");
 
     const result = await mammoth.convertToHtml(
@@ -375,28 +383,56 @@ export default function Page() {
       }
     );
 
-    return (result.value || "").trim();
+    const rawHtml = (result.value || "").trim();
+    if (!rawHtml) return { html: "", images: [] };
+
+    // Replace data urls with placeholder tokens so OpenAI never has to echo base64
+    const doc = new DOMParser().parseFromString(`<div>${rawHtml}</div>`, "text/html");
+    const root = doc.body.firstElementChild as HTMLElement | null;
+
+    const images: Array<{ id: string; src: string }> = [];
+    if (root) {
+      const imgs = Array.from(root.querySelectorAll("img"));
+      let n = 0;
+
+      for (const img of imgs) {
+        const src = (img.getAttribute("src") || "").trim();
+        if (!src.toLowerCase().startsWith("data:")) continue;
+
+        n += 1;
+        const id = `QUIZZIP_IMAGE_${n}`;
+        images.push({ id, src });
+
+        img.setAttribute("src", `quizzip:${id}`);
+      }
+    }
+
+    const htmlOut = root ? root.innerHTML : rawHtml;
+    return { html: htmlOut.trim(), images };
   }
 
   async function extractTextFromFile(f: File, opts: { preserveDocxImages: boolean }): Promise<string> {
     const name = f.name.toLowerCase();
 
+    // For non DOCX inputs, clear any previous image map
     if (name.endsWith(".txt") || name.endsWith(".md") || name.endsWith(".csv") || name.endsWith(".tsv")) {
+      setImportImages([]);
       return await f.text();
     }
 
     if (name.endsWith(".docx")) {
       const ab = await f.arrayBuffer();
       if (opts.preserveDocxImages) {
-        // Smart import path: HTML + inline images
-        const html = await extractDocxAsHtmlWithImages(ab);
+        const { html, images } = await extractDocxAsHtmlWithTokens(ab);
+        setImportImages(images);
         return html;
       }
-      // Formatted import path: plain text
+      setImportImages([]);
       return await extractDocxAsRawText(ab);
     }
 
     if (name.endsWith(".xlsx") || name.endsWith(".xls")) {
+      setImportImages([]);
       const ab = await f.arrayBuffer();
       const XLSX = await import("xlsx");
       const wb = XLSX.read(ab, { type: "array" });
@@ -410,6 +446,7 @@ export default function Page() {
       return csv.trim();
     }
 
+    setImportImages([]);
     throw new Error("Unsupported file type.");
   }
 

@@ -64,10 +64,10 @@ export async function openAiConvertToJson(args: {
     "",
     "HTML and images rules (critical):",
     "1) The input may contain HTML tags. Preserve HTML exactly when it appears.",
-    "2) If the input contains <img> tags, keep them. Do not remove them. Do not replace them with placeholders.",
-    "3) Keep <img> attributes, especially src, exactly as provided. This includes src values that start with data: or blob:.",
-    "4) Do not rewrite data URLs. Do not shorten them. Do not strip base64 content.",
-    "5) Keep HTML in promptText and choice text when present. Do not escape it into entities. Output raw HTML inside JSON strings.",
+    "2) Images may appear as <img> tags with src like quizzip:QUIZZIP_IMAGE_1. Keep these <img> tags.",
+    "3) Keep img attributes, especially src, exactly as provided. Do not remove quizzip: tokens.",
+    "4) Do not invent new image tokens. Do not rename them.",
+    "5) Output raw HTML inside JSON strings. Do not escape tags into entities.",
     "",
     "Interpret these common authoring conventions:",
     "1) Multiple choice single: a) b) c) lines, exactly one correct marked with a leading asterisk like *c).",
@@ -98,11 +98,13 @@ export async function openAiConvertToJson(args: {
       ? [
           "Review the provided JSON items for correctness. Fix obvious mistakes.",
           "Keep any HTML and any <img> tags exactly. Do not remove or alter them.",
+          "If you see img src values like quizzip:QUIZZIP_IMAGE_1, keep them exactly as is.",
           "Return JSON only.",
         ].join("\n")
       : [
           "Extract questions from the raw input into the JSON shape.",
           "If the raw input contains HTML or <img> tags, preserve them exactly in the output fields.",
+          "If you see img src values like quizzip:QUIZZIP_IMAGE_1, keep them exactly as is.",
           "Return JSON only.",
         ].join("\n");
 
