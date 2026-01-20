@@ -44,81 +44,222 @@ export default function LoginPage() {
   }
 
   return (
-    <main style={{ padding: 24, maxWidth: 520 }}>
-      <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-        <img
-          src="/quizzip-logo.png"
-          alt="Quizzip logo"
-          style={{ width: 44, height: 44, objectFit: "contain" }}
-        />
-        <div>
-          <h1 style={{ fontSize: 28, fontWeight: 900, margin: 0 }}>Quizzip</h1>
-          <p style={{ opacity: 0.85, marginTop: 4, marginBottom: 0 }}>
-            Log in with email and password, or Google.
-          </p>
+    <main className="wrap">
+      <style jsx global>{`
+        :root {
+          color-scheme: dark;
+        }
+        body {
+          margin: 0;
+          font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, "Apple Color Emoji",
+            "Segoe UI Emoji";
+          background: radial-gradient(1200px 700px at 10% 10%, #1b2a55 0%, #0b1020 45%, #070a12 100%);
+          color: #e7e9ee;
+        }
+
+        .wrap {
+          min-height: 100vh;
+          padding: 18px;
+          display: grid;
+          place-items: center;
+        }
+
+        .card {
+          width: 100%;
+          max-width: 560px;
+          background: rgba(255, 255, 255, 0.06);
+          border: 1px solid rgba(255, 255, 255, 0.08);
+          border-radius: 18px;
+          padding: 18px;
+          box-shadow: 0 10px 40px rgba(0, 0, 0, 0.35);
+          backdrop-filter: blur(10px);
+        }
+
+        .top {
+          display: flex;
+          align-items: center;
+          gap: 14px;
+        }
+        .logo {
+          width: 56px;
+          height: 56px;
+          border-radius: 16px;
+          box-shadow: 0 12px 34px rgba(0, 0, 0, 0.35);
+          object-fit: contain;
+          flex: 0 0 auto;
+        }
+        .h1 {
+          font-size: 24px;
+          font-weight: 900;
+          letter-spacing: 0.2px;
+          margin: 0;
+        }
+        .sub {
+          opacity: 0.85;
+          margin-top: 6px;
+          line-height: 1.35;
+          font-size: 13px;
+        }
+
+        .hr {
+          height: 1px;
+          background: rgba(255, 255, 255, 0.1);
+          margin: 14px 0;
+        }
+
+        .btn {
+          width: 100%;
+          padding: 10px 12px;
+          border-radius: 12px;
+          border: 1px solid rgba(255, 255, 255, 0.14);
+          background: rgba(255, 255, 255, 0.08);
+          color: #e7e9ee;
+          font-weight: 900;
+          cursor: pointer;
+          transition: transform 120ms ease, filter 120ms ease, box-shadow 120ms ease;
+          text-align: center;
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          text-decoration: none;
+        }
+        .btn:disabled {
+          opacity: 0.45;
+          cursor: not-allowed;
+        }
+        .btn:hover {
+          transform: translateY(-1px);
+          filter: brightness(1.03);
+        }
+        .btn:active {
+          transform: translateY(0px);
+        }
+
+        .btnPrimary {
+          border-color: rgba(168, 85, 247, 0.5);
+          background: linear-gradient(135deg, rgba(168, 85, 247, 0.95), rgba(236, 72, 153, 0.78));
+          box-shadow: 0 12px 28px rgba(168, 85, 247, 0.22), 0 10px 24px rgba(236, 72, 153, 0.12);
+        }
+        .btnPrimary:hover {
+          box-shadow: 0 14px 34px rgba(168, 85, 247, 0.28), 0 12px 26px rgba(236, 72, 153, 0.16);
+        }
+
+        .btnOutline {
+          border-color: rgba(168, 85, 247, 0.45);
+          background: rgba(168, 85, 247, 0.1);
+          color: rgba(255, 255, 255, 0.96);
+        }
+
+        .label {
+          display: block;
+          font-weight: 900;
+          font-size: 12px;
+          opacity: 0.9;
+          margin-bottom: 8px;
+        }
+
+        .input {
+          width: 100%;
+          border-radius: 12px;
+          border: 1px solid rgba(255, 255, 255, 0.14);
+          background: rgba(0, 0, 0, 0.25);
+          color: #e7e9ee;
+          padding: 10px 12px;
+          font-size: 13px;
+          outline: none;
+        }
+        .input:focus {
+          border-color: rgba(168, 85, 247, 0.55);
+          box-shadow: 0 0 0 4px rgba(168, 85, 247, 0.12);
+        }
+
+        .small {
+          font-size: 12px;
+          opacity: 0.85;
+          line-height: 1.35;
+        }
+
+        .links {
+          display: flex;
+          gap: 14px;
+          flex-wrap: wrap;
+          margin-top: 12px;
+        }
+        .link {
+          text-decoration: none;
+          font-weight: 900;
+          font-size: 12px;
+          opacity: 0.85;
+          color: rgba(255, 255, 255, 0.9);
+        }
+        .link:hover {
+          opacity: 1;
+          text-decoration: underline;
+        }
+      `}</style>
+
+      <div className="card">
+        <div className="top">
+          <img src="/quizzip-logo.png" alt="Quizzip logo" className="logo" />
+          <div>
+            <h1 className="h1">Quizzip</h1>
+            <div className="sub">Log in with email and password, or Google.</div>
+          </div>
         </div>
-      </div>
 
-      <div style={{ height: 18 }} />
+        <div style={{ height: 14 }} />
 
-      <button
-        onClick={signInWithGoogle}
-        style={{
-          width: "100%",
-          padding: "12px 14px",
-          fontWeight: 900,
-          borderRadius: 10,
-          border: "1px solid rgba(255,255,255,0.18)",
-          background: "rgba(255,255,255,0.08)",
-          cursor: "pointer",
-        }}
-      >
-        Continue with Google
-      </button>
+        <button onClick={signInWithGoogle} className="btn btnPrimary" type="button">
+          Continue with Google
+        </button>
 
-      <div style={{ height: 18 }} />
+        <div className="hr" />
 
-      <div style={{ opacity: 0.7, fontWeight: 800, fontSize: 12 }}>OR</div>
+        <div className="small" style={{ fontWeight: 900, opacity: 0.7 }}>
+          OR
+        </div>
 
-      <div style={{ height: 12 }} />
+        <div style={{ height: 12 }} />
 
-      <label style={{ display: "block", fontWeight: 800 }}>Email</label>
-      <input
-        value={email}
-        onChange={(e) => setEmail(e.target.value)}
-        style={{ width: "100%", padding: 10, marginTop: 6 }}
-      />
+        <label className="label">Email</label>
+        <input value={email} onChange={(e) => setEmail(e.target.value)} className="input" autoComplete="email" />
 
-      <div style={{ height: 12 }} />
+        <div style={{ height: 12 }} />
 
-      <label style={{ display: "block", fontWeight: 800 }}>Password</label>
-      <input
-        value={password}
-        onChange={(e) => setPassword(e.target.value)}
-        type="password"
-        style={{ width: "100%", padding: 10, marginTop: 6 }}
-      />
+        <label className="label">Password</label>
+        <input
+          value={password}
+          onChange={(e) => setPassword(e.target.value)}
+          type="password"
+          className="input"
+          autoComplete="current-password"
+        />
 
-      <div style={{ height: 16 }} />
+        <div style={{ height: 14 }} />
 
-      <button onClick={signInWithPassword} style={{ padding: "10px 14px", fontWeight: 800 }}>
-        Log in
-      </button>
+        <button onClick={signInWithPassword} className="btn btnOutline" type="button">
+          Log in
+        </button>
 
-      {msg && <p style={{ marginTop: 12 }}>{msg}</p>}
+        {msg ? (
+          <div style={{ marginTop: 12 }}>
+            <div className="small" style={{ border: "1px solid rgba(255, 99, 99, 0.35)", borderRadius: 14, padding: 12 }}>
+              {msg}
+            </div>
+          </div>
+        ) : null}
 
-      <div style={{ height: 14 }} />
-
-      <div style={{ display: "flex", gap: 14, flexWrap: "wrap" }}>
-        <Link href="/signup" style={{ textDecoration: "underline" }}>
-          Create account
-        </Link>
-        <Link href="/reset" style={{ textDecoration: "underline" }}>
-          Forgot password
-        </Link>
-        <Link href="/" style={{ textDecoration: "underline" }}>
-          Back
-        </Link>
+        <div className="links">
+          <Link className="link" href="/signup">
+            Create account
+          </Link>
+          <Link className="link" href="/reset">
+            Forgot password
+          </Link>
+          <Link className="link" href="/">
+            Back
+          </Link>
+        </div>
       </div>
     </main>
   );
