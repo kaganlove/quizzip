@@ -1,5 +1,7 @@
 // lib/qtiWrite.ts
+
 export type QtiChoice = { text: string; correct?: boolean };
+
 export type QtiItem =
   | {
       type: "multiple_choice_single" | "multiple_choice_multiple" | "true_false";
@@ -44,10 +46,24 @@ function makeIdent(prefix = "I") {
   return `${prefix}_${Math.random().toString(16).slice(2)}${Math.random().toString(16).slice(2)}`;
 }
 
+function stripLeadingQuestionNumbering(input: string) {
+  const s = (input ?? "").trimStart();
+  if (!s) return "";
+
+  // Case 1: HTML wrapped in a starting <p>...</p>
+  // Example: <p>10. What is ...</p>
+  // Keep the <p> tag, remove only the leading numbering token.
+  const htmlP = s.replace(/^\s*(<p[^>]*>\s*)(\(?\s*\d+\s*[\.)\:\-]\s+)/i, "$1");
+  if (htmlP !== s) return htmlP;
+
+  // Case 2: Starts with numbering in plain text
+  // Examples: 10. ... , 10) ... , (10) ... , 10: ... , 10 - ...
+  return s.replace(/^\s*\(?\s*\d+\s*[\.)\:\-]\s+/i, "");
+}
+
 function normalizePromptToHtml(promptText: string) {
-  // If promptText already contains HTML, keep it.
-  // If it looks like plain text, we still place it inside mattext html for consistency.
-  return promptText ?? "";
+  // Keep HTML if it exists; we still normalize by stripping leading question numbering.
+  return stripLeadingQuestionNumbering(promptText ?? "");
 }
 
 async function buildZipBytes(json: QtiConvertJson, outType: "uint8array" | "blob") {
@@ -63,7 +79,6 @@ async function buildZipBytes(json: QtiConvertJson, outType: "uint8array" | "blob
   const assessmentIdent = makeIdent("ASMT");
   const sectionIdent = makeIdent("SEC");
 
-  // One assessment file
   const assessmentXml = buildAssessmentXml({
     title,
     assessmentIdent,
@@ -73,7 +88,6 @@ async function buildZipBytes(json: QtiConvertJson, outType: "uint8array" | "blob
 
   zip.file("assessment.xml", assessmentXml);
 
-  // Minimal imsmanifest with assessment.xml
   const imsmanifest = `<?xml version="1.0" encoding="UTF-8"?>
 <manifest identifier="${xmlEscape(manifestIdent)}"
   xmlns="http://www.imsglobal.org/xsd/imscp_v1p1"
@@ -93,7 +107,7 @@ async function buildZipBytes(json: QtiConvertJson, outType: "uint8array" | "blob
   return await zip.generateAsync({ type: outType });
 }
 
-// Existing browser friendly export
+// Existing browser friendly export (kept for current callers)
 export async function buildCanvasQtiZip(args: { json: QtiConvertJson }) {
   return await buildZipBytes(args.json, "blob");
 }
@@ -113,9 +127,12 @@ function buildAssessmentXml(args: {
 }) {
   const { title, assessmentIdent, sectionIdent, items } = args;
 
+  // Pad numeric prefix so Canvas lex sorting looks like numeric order
+  // ITEM0001_..., ITEM0010_..., etc.
   const itemXml = items
     .map((it, idx) => {
-      const ident = makeIdent(`ITEM${idx + 1}`);
+      const n = String(idx + 1).padStart(4, "0");
+      const ident = makeIdent(`ITEM${n}`);
       return buildItemXml({ item: it, ident });
     })
     .join("\n");
@@ -133,13 +150,13 @@ function buildAssessmentXml(args: {
 function buildItemXml(args: { item: QtiItem; ident: string }) {
   const { item, ident } = args;
 
-  // Convert prompt to HTML (may include <img src="data:..."> from Smart import)
   const promptHtml = normalizePromptToHtml(item.promptText);
+  const itemTitle = "Question";
 
   if (item.type === "short_answer") {
     const expected = (item.correctText ?? "").trim();
     return `
-<item ident="${xmlEscape(ident)}" title="${xmlEscape(ident)}">
+<item ident="${xmlEscape(ident)}" title="${xmlEscape(itemTitle)}">
   <presentation>
     <material>
       ${matTextHtml(promptHtml)}
@@ -158,14 +175,18 @@ function buildItemXml(args: { item: QtiItem; ident: string }) {
       </conditionvar>
       <setvar varname="SCORE" action="Set">100</setvar>
     </respcondition>
-    ${expected ? `<itemfeedback ident="general_fb"><flow_mat><material>${matTextHtml(xmlEscape(expected))}</material></flow_mat></itemfeedback>` : ""}
+    ${
+      expected
+        ? `<itemfeedback ident="general_fb"><flow_mat><material>${matTextHtml(xmlEscape(expected))}</material></flow_mat></itemfeedback>`
+        : ""
+    }
   </resprocessing>
 </item>`;
   }
 
   if (item.type === "essay") {
     return `
-<item ident="${xmlEscape(ident)}" title="${xmlEscape(ident)}">
+<item ident="${xmlEscape(ident)}" title="${xmlEscape(itemTitle)}">
   <presentation>
     <material>
       ${matTextHtml(promptHtml)}
@@ -213,14 +234,16 @@ function buildItemXml(args: { item: QtiItem; ident: string }) {
     item.type === "multiple_choice_multiple"
       ? `
       <and>
-        ${correctIdents.map((id) => `<varequal respident="${xmlEscape(responseIdent)}">${xmlEscape(id)}</varequal>`).join("\n")}
+        ${correctIdents
+          .map((id) => `<varequal respident="${xmlEscape(responseIdent)}">${xmlEscape(id)}</varequal>`)
+          .join("\n")}
       </and>`
       : correctIdents[0]
         ? `<varequal respident="${xmlEscape(responseIdent)}">${xmlEscape(correctIdents[0])}</varequal>`
         : `<other/>`;
 
   return `
-<item ident="${xmlEscape(ident)}" title="${xmlEscape(ident)}">
+<item ident="${xmlEscape(ident)}" title="${xmlEscape(itemTitle)}">
   <presentation>
     <material>
       ${matTextHtml(promptHtml)}
