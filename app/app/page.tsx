@@ -22,6 +22,23 @@ function statusText(a: Assessment) {
   return "Empty";
 }
 
+function stripExtension(name: string) {
+  const idx = name.lastIndexOf(".");
+  if (idx <= 0) return name;
+  return name.slice(0, idx);
+}
+
+function safeFilenameBase(input: string) {
+  const s = (input || "").trim();
+  if (!s) return "canvas_import";
+
+  // Replace illegal filename chars with underscores, keep spaces
+  let out = s.replace(/[\\/:*?"<>|]/g, "_");
+  out = out.replace(/\s+/g, " ").trim();
+  if (!out) out = "canvas_import";
+  return out.slice(0, 120);
+}
+
 export default function Page() {
   const supabase = useMemo(() => supabaseBrowser(), []);
 
@@ -42,6 +59,10 @@ export default function Page() {
   // Canvas import builder (Smart import uses AI)
   const [importTab, setImportTab] = useState<"smart" | "formatted">("smart");
   const [importRaw, setImportRaw] = useState<string>("");
+
+  // New: user chosen bank name for conversion output
+  const [importTitle, setImportTitle] = useState<string>("");
+
   const [importBusy, setImportBusy] = useState<boolean>(false);
   const [importError, setImportError] = useState<string>("");
 
@@ -342,7 +363,12 @@ export default function Page() {
           "Content-Type": "application/json",
           Authorization: `Bearer ${accessToken}`,
         },
-        body: JSON.stringify({ raw, mode, images: importImages }),
+        body: JSON.stringify({
+          raw,
+          mode,
+          title: importTitle.trim() || undefined,
+          images: importImages,
+        }),
       });
 
       if (!res.ok) {
@@ -351,8 +377,10 @@ export default function Page() {
       }
 
       const blob = await res.blob();
-      const filename = mode === "review" ? "canvas_import_review.zip" : "canvas_import.zip";
-      downloadBlob(blob, filename);
+
+      const base = safeFilenameBase(importTitle.trim() || "Canvas Import");
+      const suffix = mode === "review" ? "_review" : "";
+      downloadBlob(blob, `${base}${suffix}.zip`);
     } catch (e: any) {
       setImportError(e?.message || "Import failed.");
     } finally {
@@ -414,7 +442,6 @@ export default function Page() {
   async function extractTextFromFile(f: File, opts: { preserveDocxImages: boolean }): Promise<string> {
     const name = f.name.toLowerCase();
 
-    // For non DOCX inputs, clear any previous image map
     if (name.endsWith(".txt") || name.endsWith(".md") || name.endsWith(".csv") || name.endsWith(".tsv")) {
       setImportImages([]);
       return await f.text();
@@ -441,7 +468,6 @@ export default function Page() {
       const ws = wb.Sheets[sheetName];
       if (!ws) return "";
 
-      // Convert first sheet to CSV text
       const csv = XLSX.utils.sheet_to_csv(ws);
       return csv.trim();
     }
@@ -453,7 +479,6 @@ export default function Page() {
   async function handleImportFile(f: File | null) {
     if (!f) return;
 
-    // Smart import uploads are paywalled
     if (importTab === "smart" && !isPaid) {
       setImportError("Smart import file upload is available on the paid plan. Subscribe to unlock.");
       return;
@@ -471,6 +496,12 @@ export default function Page() {
       }
 
       setImportRaw(text);
+
+      // Set a reasonable default title based on the uploaded filename
+      // Do not overwrite if user already typed a title
+      if (!importTitle.trim()) {
+        setImportTitle(stripExtension(f.name));
+      }
     } catch (e: any) {
       setImportError(e?.message || "Could not read that file.");
     }
@@ -808,6 +839,29 @@ export default function Page() {
           background: rgba(168, 85, 247, 0.16);
         }
 
+        .label {
+          display: block;
+          font-weight: 900;
+          font-size: 12px;
+          opacity: 0.9;
+          margin-bottom: 8px;
+        }
+
+        .input {
+          width: 100%;
+          border-radius: 12px;
+          border: 1px solid rgba(255, 255, 255, 0.14);
+          background: rgba(0, 0, 0, 0.25);
+          color: #e7e9ee;
+          padding: 10px 12px;
+          font-size: 13px;
+          outline: none;
+        }
+        .input:focus {
+          border-color: rgba(168, 85, 247, 0.55);
+          box-shadow: 0 0 0 4px rgba(168, 85, 247, 0.12);
+        }
+
         @media (max-width: 820px) {
           .accountEmail {
             display: none;
@@ -1091,6 +1145,17 @@ export default function Page() {
                 </div>
               )}
             </div>
+
+            <div style={{ height: 12 }} />
+
+            {/* New: bank name */}
+            <label className="label">Bank name</label>
+            <input
+              className="input"
+              value={importTitle}
+              onChange={(e) => setImportTitle(e.target.value)}
+              placeholder="Example: Chapter 28 Air Brakes"
+            />
 
             <div style={{ height: 12 }} />
 

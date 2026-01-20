@@ -15,16 +15,13 @@ function monthStartUtc(d = new Date()) {
 }
 
 function extractAccessToken(req: Request, body: any) {
-  // 1) Authorization header: "Bearer <token>"
   const auth = req.headers.get("authorization") || req.headers.get("Authorization");
   if (auth && auth.toLowerCase().startsWith("bearer ")) {
     const t = auth.slice(7).trim();
     if (t) return t;
   }
 
-  // 2) JSON body fallbacks
   const t = body?.access_token || body?.accessToken || body?.token;
-
   if (typeof t === "string" && t.trim()) return t.trim();
   return null;
 }
@@ -44,8 +41,6 @@ function buildImageMap(images: any): Record<string, string> {
 
 function replaceImageTokensInString(s: string, map: Record<string, string>): string {
   if (!s) return s;
-
-  // matches quizzip:QUIZZIP_IMAGE_1
   return s.replace(/quizzip:(QUIZZIP_IMAGE_\d+)/g, (_m, id) => {
     const repl = map[id];
     return repl ? repl : _m;
@@ -74,14 +69,29 @@ function deepReplaceImageTokens<T>(obj: T, map: Record<string, string>): T {
   return obj;
 }
 
+function normalizeTitle(input: any): string {
+  if (typeof input !== "string") return "";
+  let t = input.trim();
+  if (!t) return "";
+  t = t.replace(/[\u0000-\u001F\u007F]/g, ""); // remove control chars
+  t = t.replace(/\s+/g, " ").trim();
+  return t.slice(0, 120);
+}
+
+function safeFilenameBase(input: string) {
+  let s = (input || "").trim();
+  if (!s) s = "Canvas Import";
+  s = s.replace(/[\\/:*?"<>|]/g, "_");
+  s = s.replace(/\s+/g, " ").trim();
+  if (!s) s = "Canvas Import";
+  return s.slice(0, 120);
+}
+
 export async function POST(req: Request) {
   try {
     const body = await req.json().catch(() => ({}));
     const raw = body?.raw;
 
-    // Backward compatible:
-    // - existing: do_review boolean
-    // - client currently sends: mode: "review"
     const doReview = Boolean(body?.do_review) || body?.mode === "review";
 
     const accessToken = extractAccessToken(req, body);
@@ -93,6 +103,7 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Missing input" }, { status: 400 });
     }
 
+    const clientTitle = normalizeTitle(body?.title);
     const imagesMap = buildImageMap(body?.images);
 
     const supabaseUrl = requireEnv("NEXT_PUBLIC_SUPABASE_URL");
@@ -151,17 +162,20 @@ export async function POST(req: Request) {
     if (strict.quiz) {
       final = strict.quiz;
     } else {
-      // 2) Fall back to OpenAI when input is not in strict formats
       const convert = await openAiConvertToJson({ raw, mode: "convert" });
       final = convert.data;
       convertUsage = convert.usage ?? convertUsage;
     }
 
-    // Optional review pass (even for strict parsed content)
     if (doReview) {
       const review = await openAiConvertToJson({ raw: JSON.stringify(final), mode: "review" });
       final = review.data;
       reviewUsage = review.usage ?? reviewUsage;
+    }
+
+    // Apply client chosen title last so it always wins
+    if (clientTitle) {
+      final.title = clientTitle;
     }
 
     // Restore any quizzip image tokens to real data URLs before generating QTI
@@ -180,8 +194,8 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "This job would exceed your monthly limit" }, { status: 429 });
     }
 
-    // buildQtiZip returns bytes suitable for NextResponse
-    const zipBytes = await buildQtiZip(final.title || "Quiz", items);
+    const title = (final.title || "Canvas Import").toString();
+    const zipBytes = await buildQtiZip(title, items);
 
     const inputTokens = (convertUsage.input_tokens ?? 0) + (reviewUsage.input_tokens ?? 0);
     const outputTokens = (convertUsage.output_tokens ?? 0) + (reviewUsage.output_tokens ?? 0);
@@ -199,11 +213,14 @@ export async function POST(req: Request) {
       { onConflict: "user_id,period_start" }
     );
 
+    const base = safeFilenameBase(clientTitle || title);
+    const suffix = doReview ? "_review" : "";
+
     return new NextResponse(zipBytes, {
       status: 200,
       headers: {
         "Content-Type": "application/zip",
-        "Content-Disposition": `attachment; filename="canvas_qti.zip"`,
+        "Content-Disposition": `attachment; filename="${base}${suffix}.zip"`,
       },
     });
   } catch (e: any) {
