@@ -46,45 +46,43 @@ export default function LandingPage() {
         <section className="hero">
           <div className="card heroLeft">
             <h1 className="h1">
-              <span className="h1Main">Preview QTI exports instantly.</span>
-              <span className="h1Sub">Turn question banks into a Canvas import zip you can upload.</span>
+              <span className="h1Main">Preview Canvas QTI instantly.</span>
+              <span className="h1Sub">Open an export zip in a clean view, then convert when you are ready.</span>
             </h1>
 
             <p className="p">
-              Open Canvas Classic quiz export zips in a clean view, export Word with images, and generate a QTI import zip when you
-              need to rebuild or move banks fast.
+              Open a Canvas Classic QTI zip in your browser and scan questions fast. Your file stays on your computer.
             </p>
 
             <div className="ctaRow">
               <Link className="btn btnPrimary btnBig" href="/login?next=/app">
-                Log in
+                Open the app
               </Link>
               <Link className="btn btnOutline btnBig" href="/signup">
                 Create account
               </Link>
             </div>
 
-            {/* Plain list: checks + text */}
             <ul className="featureList" aria-label="Key benefits">
-              <li>Free QTI preview</li>
-              <li>Unlimited formatted import</li>
-              <li>Smart import for any input</li>
-              <li>Export to Word</li>
-              <li>Images supported</li>
+              <li>In browser QTI preview</li>
+              <li>Export to Word with images</li>
+              <li>Formatted import for template based banks</li>
+              <li>Smart import for messy docs and sheets</li>
+              <li>Canvas import zip output</li>
             </ul>
 
             <div className="trustRow">
               <div className="trustItem">
                 <div className="trustTitle">Privacy first</div>
-                <div className="trustBody">Preview and formatted import run locally in your browser.</div>
+                <div className="trustBody">Preview runs locally. Nothing is uploaded for preview.</div>
               </div>
               <div className="trustItem">
-                <div className="trustTitle">Made for review</div>
-                <div className="trustBody">See exactly what will import before you touch Canvas.</div>
+                <div className="trustTitle">Built for review</div>
+                <div className="trustBody">See what will import before you touch Canvas.</div>
               </div>
               <div className="trustItem">
                 <div className="trustTitle">Fast exports</div>
-                <div className="trustBody">Word exports with images for SMEs and faculty review.</div>
+                <div className="trustBody">Word exports with images for SMEs and faculty.</div>
               </div>
             </div>
           </div>
@@ -99,17 +97,17 @@ export default function LandingPage() {
             </div>
 
             <div className="p small">
-              Built for instructional designers and faculty who need a fast way to preview, clean up, and import quizzes into Canvas.
+              For instructional designers and faculty who manage Canvas question banks.
             </div>
 
             <ul className="list">
-              <li>Free QTI preview in a clean UI</li>
+              <li>Preview Canvas exports in a clean UI</li>
               <li>Export to Word with images</li>
-              <li>Unlimited formatted import and QTI export</li>
+              <li>Unlimited formatted imports and QTI export</li>
               <li>
-                Smart import for any input includes <strong>1,000 questions</strong> per month
+                Smart import for messy docs and spreadsheets includes <strong>1,000 questions</strong> per month
               </li>
-              <li>Optional review pass before export</li>
+              <li>One review pass before export</li>
               <li>Manage billing anytime</li>
             </ul>
 
@@ -117,43 +115,44 @@ export default function LandingPage() {
               Start now
             </Link>
 
-            <div className="finePrint">Cancel anytime. Preview and formatted import stay local. Smart import uses AI and is metered.</div>
+            <div className="finePrint">
+              Cancel anytime. Preview and formatted import stay local. Smart import uses AI and is metered.
+            </div>
           </aside>
         </section>
 
-        {/* Preview */}
+        {/* What you get */}
         <section className="card preview">
           <div className="previewGrid">
             <div>
               <div className="kicker">What you get</div>
-              <h2 className="h2">A quiz pipeline: preview, normalize, export, import</h2>
+              <h2 className="h2">A simple quiz pipeline</h2>
               <p className="p">
-                Whether you are auditing a Canvas export or building a bank from scratch, Quizzip gives you a clean review screen and
-                a Canvas import zip.
+                Preview first, convert when needed, then export for Canvas or Word.
               </p>
 
               <div className="previewBullets">
                 <div className="bullet">
                   <div className="bulletDot" aria-hidden="true" />
                   <div>
-                    <div className="bulletTitle">Free preview</div>
-                    <div className="bulletBody">Open Canvas Classic exports and scan questions fast.</div>
+                    <div className="bulletTitle">Preview</div>
+                    <div className="bulletBody">Drop in a Canvas Classic export zip and scan questions fast.</div>
                   </div>
                 </div>
 
                 <div className="bullet">
                   <div className="bulletDot" aria-hidden="true" />
                   <div>
-                    <div className="bulletTitle">Two import lanes</div>
-                    <div className="bulletBody">Use formatted import for instant conversion, or Smart import to normalize almost anything.</div>
+                    <div className="bulletTitle">Convert</div>
+                    <div className="bulletBody">Use formatted import for template style inputs, or Smart import for messy content.</div>
                   </div>
                 </div>
 
                 <div className="bullet">
                   <div className="bulletDot" aria-hidden="true" />
                   <div>
-                    <div className="bulletTitle">Review before export</div>
-                    <div className="bulletBody">Catch issues early, then download a QTI import zip.</div>
+                    <div className="bulletTitle">Export</div>
+                    <div className="bulletBody">Download a Canvas import zip, or Word with images for review.</div>
                   </div>
                 </div>
               </div>
@@ -169,17 +168,17 @@ export default function LandingPage() {
 
               <div className="mockBody">
                 <div className="mockPanel">
-                  <div className="mockH">1 Preview</div>
+                  <div className="mockH">Preview</div>
                   <div className="mockSub">Open a Canvas export zip and scan questions in a clean view</div>
                 </div>
 
                 <div className="mockPanel">
-                  <div className="mockH">2 Import</div>
+                  <div className="mockH">Convert</div>
                   <div className="mockSub">Formatted import or Smart import for messy inputs</div>
                 </div>
 
                 <div className="mockPanel">
-                  <div className="mockH">3 Export</div>
+                  <div className="mockH">Export</div>
                   <div className="mockSub">Download Word with images or a Canvas import zip</div>
                 </div>
               </div>
@@ -195,19 +194,19 @@ export default function LandingPage() {
             <div className="step">
               <div className="stepNum">1</div>
               <div className="stepTitle">Preview QTI</div>
-              <div className="stepBody">Open Canvas Classic export zips and review questions fast.</div>
+              <div className="stepBody">Open a Canvas Classic export zip and review questions fast.</div>
             </div>
 
             <div className="step">
               <div className="stepNum">2</div>
-              <div className="stepTitle">Import your bank</div>
-              <div className="stepBody">Use formatted import or Smart import for messy content.</div>
+              <div className="stepTitle">Convert your bank</div>
+              <div className="stepBody">Upload docx, xlsx, csv, tsv, txt, or paste content.</div>
             </div>
 
             <div className="step">
               <div className="stepNum">3</div>
               <div className="stepTitle">Export for Canvas</div>
-              <div className="stepBody">Download a QTI zip and import directly into Canvas. Export Word too.</div>
+              <div className="stepBody">Download a QTI zip and import into Canvas. Export Word too.</div>
             </div>
           </div>
         </section>
@@ -219,8 +218,7 @@ export default function LandingPage() {
           <details className="qa">
             <summary>Do my files get uploaded anywhere</summary>
             <div className="qaBody">
-              QTI preview and formatted import run locally in your browser. Smart import uses AI and is processed on the server so we
-              can generate your QTI zip.
+              Preview and formatted import run locally in your browser. Smart import is processed on the server so we can generate your QTI zip.
             </div>
           </details>
 
@@ -232,52 +230,13 @@ export default function LandingPage() {
           <details className="qa">
             <summary>What formats does Smart import accept</summary>
             <div className="qaBody">
-              Paste text or upload common files like docx, xlsx, and csv. If your content has clear numbering and answers, Smart
-              import can usually normalize it.
+              Paste text or upload docx, xlsx, csv, tsv, or txt. If your content has clear numbering and answers, Smart import can usually normalize it.
             </div>
-          </details>
-
-          <details className="qa">
-            <summary>What question types are supported</summary>
-            <div className="qaBody">
-              Multiple choice, multiple answers, true or false, short answer, essay, and file upload. If something is ambiguous, we
-              flag it for review.
-            </div>
-          </details>
-
-          <details className="qa">
-            <summary>What does unlimited formatted import mean</summary>
-            <div className="qaBody">If you use our formatted input style, conversion and export are unlimited because it does not require AI.</div>
           </details>
 
           <details className="qa">
             <summary>What counts toward the 1,000 Smart import questions</summary>
-            <div className="qaBody">Only Smart import conversions. QTI preview and formatted import exports do not count.</div>
-          </details>
-
-          <details className="qa">
-            <summary>What are the Smart import limits per upload</summary>
-            <div className="qaBody">If you hit the limit, we will ask you to split the content into smaller batches for best results.</div>
-          </details>
-
-          <details className="qa">
-            <summary>Can I export a Word document too</summary>
-            <div className="qaBody">Yes. Word export is generated in your browser. Images are included.</div>
-          </details>
-
-          <details className="qa">
-            <summary>Will the QTI zip import cleanly into Canvas</summary>
-            <div className="qaBody">Yes for Canvas Classic. We still recommend importing into a sandbox course first, especially for high stakes exams.</div>
-          </details>
-
-          <details className="qa">
-            <summary>Can multiple people use one account</summary>
-            <div className="qaBody">A single subscription is intended for one user. If you need a department license, reach out and we will set it up.</div>
-          </details>
-
-          <details className="qa">
-            <summary>Do you offer annual billing</summary>
-            <div className="qaBody">Yes. You can switch plans inside the app.</div>
+            <div className="qaBody">Only Smart import conversions. Preview and formatted import exports do not count.</div>
           </details>
 
           <details className="qa">
@@ -449,7 +408,7 @@ const css = `
   .h1Sub{
     display:block;
     margin-top:18px;
-    font-size:30px;
+    font-size:28px;
     line-height:1.15;
     opacity:0.92;
     letter-spacing:-0.3px;
@@ -715,7 +674,7 @@ const css = `
     .nav{display:none;}
     .hero{grid-template-columns: 1fr;}
     .h1Main{font-size:44px;}
-    .h1Sub{font-size:26px;}
+    .h1Sub{font-size:24px;}
     .trustRow{grid-template-columns: 1fr;}
     .previewGrid{grid-template-columns: 1fr;}
     .steps{grid-template-columns: 1fr;}
@@ -730,6 +689,6 @@ const css = `
     .btn{padding:10px 12px;}
     .logoImg{width:56px; height:56px;}
     .h1Main{font-size:38px;}
-    .h1Sub{font-size:22px;}
+    .h1Sub{font-size:20px;}
   }
 `;

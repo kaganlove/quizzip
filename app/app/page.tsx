@@ -32,7 +32,6 @@ function safeFilenameBase(input: string) {
   const s = (input || "").trim();
   if (!s) return "canvas_import";
 
-  // Replace illegal filename chars with underscores, keep spaces
   let out = s.replace(/[\\/:*?"<>|]/g, "_");
   out = out.replace(/\s+/g, " ").trim();
   if (!out) out = "canvas_import";
@@ -43,6 +42,7 @@ export default function Page() {
   const supabase = useMemo(() => supabaseBrowser(), []);
 
   const [toolTab, setToolTab] = useState<"preview" | "convert">("preview");
+  const [toolGateMsg, setToolGateMsg] = useState<string>("");
 
   // Preview state
   const [file, setFile] = useState<File | null>(null);
@@ -60,7 +60,7 @@ export default function Page() {
   const [importTab, setImportTab] = useState<"smart" | "formatted">("smart");
   const [importRaw, setImportRaw] = useState<string>("");
 
-  // New: user chosen bank name for conversion output
+  // User chosen bank name for conversion output
   const [importTitle, setImportTitle] = useState<string>("");
 
   const [importBusy, setImportBusy] = useState<boolean>(false);
@@ -350,7 +350,7 @@ export default function Page() {
       return;
     }
     if (!isPaid) {
-      setImportError("Smart import is part of the paid plan.");
+      setImportError("Conversion is part of the subscription.");
       return;
     }
 
@@ -389,15 +389,16 @@ export default function Page() {
   }
 
   // DOCX helpers:
-  // - Smart import: extract HTML but replace base64 images with quizzip tokens to avoid huge OpenAI outputs
-  // - Formatted import: keep raw text extraction (no HTML)
+  // Smart import: extract HTML but replace base64 images with tokens to avoid huge AI outputs
   async function extractDocxAsRawText(ab: ArrayBuffer): Promise<string> {
     const mammoth = await import("mammoth/mammoth.browser");
     const result = await mammoth.extractRawText({ arrayBuffer: ab });
     return (result.value || "").trim();
   }
 
-  async function extractDocxAsHtmlWithTokens(ab: ArrayBuffer): Promise<{ html: string; images: Array<{ id: string; src: string }> }> {
+  async function extractDocxAsHtmlWithTokens(
+    ab: ArrayBuffer
+  ): Promise<{ html: string; images: Array<{ id: string; src: string }> }> {
     const mammoth = await import("mammoth/mammoth.browser");
 
     const result = await mammoth.convertToHtml(
@@ -414,7 +415,6 @@ export default function Page() {
     const rawHtml = (result.value || "").trim();
     if (!rawHtml) return { html: "", images: [] };
 
-    // Replace data urls with placeholder tokens so OpenAI never has to echo base64
     const doc = new DOMParser().parseFromString(`<div>${rawHtml}</div>`, "text/html");
     const root = doc.body.firstElementChild as HTMLElement | null;
 
@@ -480,7 +480,7 @@ export default function Page() {
     if (!f) return;
 
     if (importTab === "smart" && !isPaid) {
-      setImportError("Smart import file upload is available on the paid plan. Subscribe to unlock.");
+      setImportError("Conversion is part of the subscription. Subscribe to unlock.");
       return;
     }
 
@@ -497,8 +497,6 @@ export default function Page() {
 
       setImportRaw(text);
 
-      // Set a reasonable default title based on the uploaded filename
-      // Do not overwrite if user already typed a title
       if (!importTitle.trim()) {
         setImportTitle(stripExtension(f.name));
       }
@@ -545,6 +543,26 @@ export default function Page() {
     }
   }
 
+  function handleToolClick(next: "preview" | "convert") {
+    setToolGateMsg("");
+    if (next === "preview") {
+      setToolTab("preview");
+      return;
+    }
+
+    // Convert is subscription gated
+    if (!userEmail) {
+      setToolGateMsg("Log in to unlock conversion.");
+      return;
+    }
+    if (!isPaid) {
+      setToolGateMsg("Conversion is part of the subscription.");
+      return;
+    }
+
+    setToolTab("convert");
+  }
+
   const accountStatusPill = useMemo(() => {
     const status = (subStatus || "").toLowerCase();
     const active = status === "active" || status === "trialing";
@@ -552,6 +570,8 @@ export default function Page() {
     if (active) return { cls: "pill good", text: "Active" };
     return { cls: "pill warn", text: "Free" };
   }, [subStatus, userEmail]);
+
+  const convertLocked = !isPaid;
 
   return (
     <main className="wrap">
@@ -839,6 +859,20 @@ export default function Page() {
           background: rgba(168, 85, 247, 0.16);
         }
 
+        .tabMetaRow {
+          display: flex;
+          justify-content: space-between;
+          align-items: baseline;
+          gap: 10px;
+          margin-top: 8px;
+          flex-wrap: wrap;
+        }
+        .tabMeta {
+          font-size: 12px;
+          opacity: 0.78;
+          line-height: 1.3;
+        }
+
         .label {
           display: block;
           font-weight: 900;
@@ -875,7 +909,7 @@ export default function Page() {
           <img className="brandLogo" src="/quizzip-logo.png" alt="Quizzip logo" />
           <div className="brandText">
             <div className="h1">Quizzip</div>
-            <div className="sub">Preview Canvas Classic exports for free, then convert question banks into a Canvas import zip.</div>
+            <div className="sub">Preview Canvas Classic exports, then convert question banks into a Canvas import zip.</div>
           </div>
         </div>
 
@@ -960,7 +994,7 @@ export default function Page() {
         <div className="card" style={{ flex: "1 1 320px", minWidth: 300 }}>
           <h2 className="sectionTitle">Tools</h2>
           <div className="small" style={{ marginTop: 8 }}>
-            Start free with preview. Convert to a Canvas import zip when you are ready.
+            Preview runs locally. Conversion is unlocked with a subscription.
           </div>
 
           <div style={{ height: 12 }} />
@@ -969,36 +1003,69 @@ export default function Page() {
             <button
               type="button"
               className={"tabBtn " + (toolTab === "preview" ? "active" : "")}
-              onClick={() => setToolTab("preview")}
+              onClick={() => handleToolClick("preview")}
             >
-              Preview export (Free)
+              Preview QTI
             </button>
 
             <button
               type="button"
               className={"tabBtn " + (toolTab === "convert" ? "active" : "")}
-              onClick={() => setToolTab("convert")}
+              onClick={() => handleToolClick("convert")}
             >
-              Convert to Canvas (Paid)
+              Convert to Canvas {convertLocked ? "🔒" : ""}
             </button>
           </div>
+
+          <div className="tabMetaRow">
+            <div className="tabMeta">Open a Canvas export zip and scan questions.</div>
+            <div className="tabMeta">{convertLocked ? "Requires subscription" : "Unlocked"}</div>
+          </div>
+
+          {toolGateMsg ? (
+            <>
+              <div style={{ height: 12 }} />
+              <div className="notice" style={{ borderColor: "rgba(168, 85, 247, 0.45)" }}>
+                <b>{toolGateMsg}</b>
+                <div style={{ marginTop: 8 }}>
+                  {!userEmail ? (
+                    <>
+                      <Link className="btn btnPrimary" href="/login?next=/app">
+                        Log in to continue
+                      </Link>
+                      <div style={{ height: 10 }} />
+                      <Link className="btn btnOutline" href="/signup">
+                        Create account
+                      </Link>
+                    </>
+                  ) : (
+                    <>
+                      <button className="btn btnPrimary" onClick={() => void startCheckout("monthly")}>
+                        Unlock conversion
+                      </button>
+                      <div className="small" style={{ marginTop: 10 }}>
+                        Want yearly. Choose it from the account menu.
+                      </div>
+                    </>
+                  )}
+                </div>
+              </div>
+            </>
+          ) : null}
 
           <div style={{ height: 12 }} />
 
           {toolTab === "preview" ? (
             <div className="notice">
-              <b>Preview mode</b>
+              <b>Preview</b>
               <div style={{ marginTop: 8 }}>Upload a Canvas Classic export zip to view assessments and questions.</div>
               <div className="small" style={{ marginTop: 10 }}>Nothing is uploaded to our servers for preview.</div>
             </div>
           ) : (
             <div className="notice">
-              <b>Convert mode</b>
+              <b>Convert</b>
               <div style={{ marginTop: 8 }}>Upload or paste your question bank, then export a Canvas import zip.</div>
-              {!isPaid && <div className="small" style={{ marginTop: 10 }}>Smart import is locked until you subscribe.</div>}
-              <div className="small" style={{ marginTop: 10 }}>
-                Google Docs: copy paste, or download as docx and upload.
-              </div>
+              <div className="small" style={{ marginTop: 10 }}>Docs: paste content, or download as docx and upload.</div>
             </div>
           )}
         </div>
@@ -1092,8 +1159,8 @@ export default function Page() {
                       <div className="notice">
                         <b>This export does not include questions</b>
                         <div style={{ marginTop: 6 }}>
-                          It references question banks ({selected.bankRefCount} bank refs). Canvas does not embed those questions in this export zip,
-                          so preview and export are not possible for this assessment.
+                          It references question banks ({selected.bankRefCount} bank refs). Canvas does not embed those questions in this export zip, so
+                          preview and export are not possible for this assessment.
                         </div>
                       </div>
                     </>
@@ -1133,22 +1200,13 @@ export default function Page() {
 
             <div className="notice">
               <b>{importTab === "smart" ? "Smart import" : "Formatted import"}</b>
-              <div style={{ marginTop: 8 }}>
-                Upload docx, xlsx, csv, tsv, txt, md, or paste content.
-              </div>
-              <div className="small" style={{ marginTop: 10 }}>
-                Google Docs: copy paste, or download as docx and upload.
-              </div>
-              {importTab === "smart" && !isPaid && (
-                <div className="small" style={{ marginTop: 10 }}>
-                  Smart import is locked until you subscribe.
-                </div>
-              )}
+              <div style={{ marginTop: 8 }}>Upload docx, xlsx, csv, tsv, txt, md, or paste content.</div>
+              <div className="small" style={{ marginTop: 10 }}>Docs: paste content, or download as docx and upload.</div>
+              {importTab === "smart" && !isPaid && <div className="small" style={{ marginTop: 10 }}>Conversion is part of the subscription.</div>}
             </div>
 
             <div style={{ height: 12 }} />
 
-            {/* New: bank name */}
             <label className="label">Bank name</label>
             <input
               className="input"
@@ -1183,11 +1241,7 @@ export default function Page() {
               }}
               value={importRaw}
               onChange={(e) => setImportRaw(e.target.value)}
-              placeholder={
-                importTab === "smart"
-                  ? "Paste anything that looks like questions and answers."
-                  : "Paste questions in Quizzip formatted style."
-              }
+              placeholder={importTab === "smart" ? "Paste anything that looks like questions and answers." : "Paste questions in Quizzip formatted style."}
               rows={12}
             />
 
@@ -1222,9 +1276,7 @@ export default function Page() {
 
                 <div className="notice">
                   <b>Next</b>
-                  <div style={{ marginTop: 6 }}>
-                    We will wire this lane to export instantly without AI. For now, Smart import handles the conversion.
-                  </div>
+                  <div style={{ marginTop: 6 }}>We will wire this lane to export instantly without AI. For now, Smart import handles the conversion.</div>
                 </div>
               </>
             )}
@@ -1241,7 +1293,7 @@ export default function Page() {
         )}
       </div>
 
-      {/* Preview + Export panels stay available when a quiz is selected */}
+      {/* Preview + Export panels */}
       {toolTab === "preview" && selected ? (
         <>
           <div style={{ height: 16 }} />
