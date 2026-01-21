@@ -22,12 +22,12 @@ export default function LandingPage() {
           </div>
 
           <nav className="nav">
-            <a className="navLink" href="#how">
+            <Link className="navLink" href="/how-it-works">
               How it works
-            </a>
-            <a className="navLink" href="#pricing">
+            </Link>
+            <Link className="navLink" href="/pricing">
               Pricing
-            </a>
+            </Link>
             <a className="navLink" href="#faq">
               FAQ
             </a>
@@ -293,7 +293,9 @@ export default function LandingPage() {
         </section>
 
         {/* Shared footer (consistent across pages) */}
-        <SiteFooter className="mt-8" />
+        <div className="mt8">
+          <SiteFooter />
+        </div>
       </div>
 
       <style>{css}</style>
@@ -689,6 +691,8 @@ const css = `
     font-size:13px;
     line-height:1.6;
   }
+
+  .mt8{ margin-top: 26px; }
 
   @media (max-width: 940px){
     .nav{display:none;}

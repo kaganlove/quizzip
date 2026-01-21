@@ -8,75 +8,74 @@ export const metadata = {
 
 export default function HowItWorksPage() {
   return (
-    <main className="min-h-screen bg-[radial-gradient(1200px_700px_at_10%_10%,#1b2a55_0%,#0b1020_45%,#070a12_100%)] text-white">
-      <div className="mx-auto max-w-5xl px-6 py-10">
-        <header className="flex items-center justify-between gap-4">
-          <Link href="/" className="flex items-center gap-3">
-            <img
-              src="/quizzip-logo.png"
-              alt="Quizzip"
-              className="h-10 w-10 rounded-xl shadow-[0_12px_34px_rgba(0,0,0,0.35)]"
-            />
-            <div>
-              <div className="text-lg font-extrabold leading-tight">Quizzip</div>
-              <div className="text-xs text-white/70">Canvas quiz tools that just work</div>
+    <main className="wrap">
+      <div className="container">
+        <header className="topbar">
+          <Link href="/" className="brandLink">
+            <img className="logoImgSm" src="/quizzip-logo.png" alt="Quizzip" />
+            <div className="brandText">
+              <div className="brandName">Quizzip</div>
+              <div className="brandSub">Canvas quiz tools that just work</div>
             </div>
           </Link>
 
-          <nav className="flex flex-wrap items-center gap-3 text-sm text-white/80">
-            <Link className="hover:text-white" href="/privacy">
+          <nav className="nav">
+            <Link className="navLink" href="/pricing">
+              Pricing
+            </Link>
+            <Link className="navLink" href="/privacy">
               Privacy
             </Link>
-            <Link className="hover:text-white" href="/security">
+            <Link className="navLink" href="/security">
               Security
             </Link>
-            <Link className="hover:text-white" href="/contact">
+            <Link className="navLink" href="/contact">
               Contact
             </Link>
-            <Link
-              className="rounded-xl border border-white/15 bg-white/5 px-4 py-2 font-extrabold hover:bg-white/10"
-              href="/login"
-            >
+          </nav>
+
+          <div className="actions">
+            <Link className="btn btnOutline" href="/login">
               Log in
             </Link>
-          </nav>
+          </div>
         </header>
 
-        <div className="mt-8 rounded-2xl border border-white/10 bg-white/5 p-6 shadow-[0_10px_40px_rgba(0,0,0,0.35)] backdrop-blur">
-          <h1 className="text-3xl font-extrabold">How it works</h1>
-          <p className="mt-2 text-sm text-white/75">A simple quiz pipeline: preview, convert, export.</p>
+        <section className="card">
+          <h1 className="h1">How it works</h1>
+          <p className="pSmall">A simple quiz pipeline: preview, convert, export.</p>
 
-          <div className="mt-8 grid gap-4 md:grid-cols-3">
-            <div className="rounded-2xl border border-white/10 bg-white/5 p-5">
-              <div className="text-sm font-extrabold">Preview</div>
-              <div className="mt-2 text-sm text-white/80">
+          <div className="stepGrid">
+            <div className="miniCard">
+              <div className="miniTitle">Preview</div>
+              <div className="miniBody">
                 Open a Canvas Classic QTI export zip and instantly see questions, choices, and images in a clean browser view.
               </div>
-              <ul className="mt-4 list-disc space-y-2 pl-5 text-sm text-white/80">
+              <ul className="miniList">
                 <li>Runs locally in your browser</li>
                 <li>No upload required for preview</li>
                 <li>Built for fast review</li>
               </ul>
             </div>
 
-            <div className="rounded-2xl border border-white/10 bg-white/5 p-5">
-              <div className="text-sm font-extrabold">Convert</div>
-              <div className="mt-2 text-sm text-white/80">
+            <div className="miniCard">
+              <div className="miniTitle">Convert</div>
+              <div className="miniBody">
                 Upload or paste your question bank and generate a Canvas importable QTI zip when you are ready.
               </div>
-              <ul className="mt-4 list-disc space-y-2 pl-5 text-sm text-white/80">
+              <ul className="miniList">
                 <li>Formatted import for template based content</li>
                 <li>Smart import for messy docs and mixed formats</li>
                 <li>Review before export</li>
               </ul>
             </div>
 
-            <div className="rounded-2xl border border-white/10 bg-white/5 p-5">
-              <div className="text-sm font-extrabold">Export</div>
-              <div className="mt-2 text-sm text-white/80">
+            <div className="miniCard">
+              <div className="miniTitle">Export</div>
+              <div className="miniBody">
                 Download a Canvas QTI import zip or a Word export with images for SME review.
               </div>
-              <ul className="mt-4 list-disc space-y-2 pl-5 text-sm text-white/80">
+              <ul className="miniList">
                 <li>Canvas import zip output</li>
                 <li>Word export for review</li>
                 <li>Designed to reduce rework</li>
@@ -84,13 +83,13 @@ export default function HowItWorksPage() {
             </div>
           </div>
 
-          <div className="mt-8 rounded-2xl border border-white/10 bg-white/5 p-5">
-            <div className="text-sm font-extrabold">Supported inputs for conversion</div>
-            <div className="mt-2 text-sm text-white/80">
+          <div className="blockCard">
+            <div className="blockTitle">Supported inputs for conversion</div>
+            <div className="blockBody">
               Smart import can accept pasted content and common file types. Formatted import is best when your content follows the
               Quizzip template.
             </div>
-            <ul className="mt-4 list-disc space-y-2 pl-5 text-sm text-white/80">
+            <ul className="miniList">
               <li>docx</li>
               <li>xlsx</li>
               <li>csv</li>
@@ -100,24 +99,201 @@ export default function HowItWorksPage() {
             </ul>
           </div>
 
-          <div className="mt-8 flex flex-wrap gap-3">
-            <Link
-              href="/app"
-              className="rounded-xl border border-purple-400/40 bg-gradient-to-r from-purple-500/90 to-pink-500/70 px-5 py-3 text-sm font-extrabold shadow-[0_12px_28px_rgba(168,85,247,0.22)] hover:brightness-105"
-            >
+          <div className="ctaRow">
+            <Link className="btn btnPrimary" href="/app">
               Open the app
             </Link>
-            <Link
-              href="/contact"
-              className="rounded-xl border border-white/15 bg-white/5 px-5 py-3 text-sm font-extrabold hover:bg-white/10"
-            >
+            <Link className="btn btnOutline" href="/contact">
               Contact support
             </Link>
           </div>
-        </div>
+        </section>
 
-        <SiteFooter className="mt-8" />
+        <div className="mt8">
+          <SiteFooter />
+        </div>
       </div>
+
+      <style>{css}</style>
     </main>
   );
 }
+
+const css = `
+  html, body{ background:#070a12; }
+
+  .wrap{
+    min-height:100vh;
+    padding:16px 18px;
+    color:rgba(255,255,255,0.92);
+    position:relative;
+    overflow:hidden;
+    background: transparent;
+  }
+
+  .wrap::before{
+    content:"";
+    position:fixed;
+    inset:0;
+    z-index:-1;
+    background:
+      radial-gradient(1200px 600px at 18% 10%, rgba(99,102,241,0.28), transparent 60%),
+      radial-gradient(1100px 600px at 82% 30%, rgba(34,197,94,0.18), transparent 55%),
+      radial-gradient(900px 520px at 55% 80%, rgba(56,189,248,0.10), transparent 60%),
+      #070a12;
+    background-repeat:no-repeat;
+  }
+
+  .container{ max-width:1080px; margin:0 auto; position:relative; z-index:1; }
+
+  .topbar{
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    gap:14px;
+    margin-bottom:22px;
+  }
+
+  .brandLink{
+    display:flex;
+    align-items:center;
+    gap:12px;
+    text-decoration:none;
+    color:inherit;
+  }
+
+  .logoImgSm{
+    width:46px;
+    height:46px;
+    object-fit:contain;
+    display:block;
+    filter: drop-shadow(0 10px 22px rgba(0,0,0,0.35));
+  }
+
+  .brandText{display:flex; flex-direction:column; gap:5px;}
+  .brandName{font-weight:1000; font-size:18px; letter-spacing:-0.2px; line-height:1;}
+  .brandSub{opacity:0.70; font-size:12px; line-height:1.2;}
+
+  .nav{display:flex; gap:16px; align-items:center;}
+  .navLink{
+    color:rgba(255,255,255,0.78);
+    text-decoration:none;
+    font-weight:800;
+    font-size:13px;
+    padding:8px 10px;
+    border-radius:12px;
+  }
+  .navLink:hover{background:rgba(255,255,255,0.06); color:rgba(255,255,255,0.92);}
+
+  .actions{display:flex; gap:10px; align-items:center;}
+
+  .btn{
+    display:inline-flex;
+    align-items:center;
+    justify-content:center;
+    padding:10px 14px;
+    border-radius:14px;
+    text-decoration:none;
+    font-weight:950;
+    border:1px solid rgba(255,255,255,0.16);
+    color:rgba(255,255,255,0.94);
+    background:rgba(255,255,255,0.06);
+    transition: transform 120ms ease, filter 120ms ease, box-shadow 120ms ease, border 120ms ease;
+  }
+  .btn:hover{transform: translateY(-1px); filter: brightness(1.03);}
+  .btn:active{transform: translateY(0px);}
+
+  .btnPrimary{
+    border-color: rgba(168,85,247,0.50);
+    background: linear-gradient(135deg, rgba(168,85,247,0.95), rgba(236,72,153,0.78));
+    box-shadow:
+      0 12px 28px rgba(168,85,247,0.22),
+      0 10px 24px rgba(236,72,153,0.12);
+  }
+
+  .btnOutline{
+    border-color: rgba(168,85,247,0.45);
+    background: rgba(168,85,247,0.10);
+    color: rgba(255,255,255,0.96);
+  }
+
+  .card{
+    padding:24px;
+    border-radius:18px;
+    background:rgba(255,255,255,0.06);
+    border:1px solid rgba(255,255,255,0.12);
+    box-shadow: 0 18px 50px rgba(0,0,0,0.35);
+    backdrop-filter: blur(6px);
+  }
+
+  .h1{
+    margin:0;
+    font-weight:1000;
+    letter-spacing:-0.6px;
+    line-height:1.05;
+    font-size:34px;
+  }
+
+  .pSmall{
+    margin-top:10px;
+    opacity:0.78;
+    font-size:13px;
+    line-height:1.6;
+  }
+
+  .stepGrid{
+    margin-top:18px;
+    display:grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap:14px;
+  }
+
+  .miniCard{
+    padding:16px;
+    border-radius:16px;
+    border:1px solid rgba(255,255,255,0.10);
+    background:rgba(255,255,255,0.04);
+  }
+
+  .miniTitle{ font-weight:1000; font-size:14px; }
+  .miniBody{ margin-top:10px; opacity:0.80; font-size:13px; line-height:1.55; }
+
+  .miniList{
+    margin-top:12px;
+    padding-left:18px;
+    opacity:0.84;
+    line-height:1.85;
+    font-size:13px;
+  }
+
+  .blockCard{
+    margin-top:18px;
+    padding:18px;
+    border-radius:16px;
+    border:1px solid rgba(255,255,255,0.10);
+    background:rgba(255,255,255,0.04);
+  }
+
+  .blockTitle{ font-weight:1000; font-size:13px; }
+  .blockBody{ margin-top:10px; opacity:0.80; font-size:13px; line-height:1.6; }
+
+  .ctaRow{
+    margin-top:16px;
+    display:flex;
+    gap:12px;
+    flex-wrap:wrap;
+  }
+
+  .mt8{ margin-top: 26px; }
+
+  @media (max-width: 940px){
+    .nav{display:none;}
+    .stepGrid{ grid-template-columns: 1fr; }
+  }
+
+  @media (max-width: 520px){
+    .wrap{padding:12px 14px;}
+    .card{padding:20px;}
+    .h1{font-size:30px;}
+  }
+`;
