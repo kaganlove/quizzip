@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { supabaseBrowser } from "../../lib/supabaseClient";
+import SiteFooter from "../../components/SiteFooter";
 
 function getCanonicalOrigin(): string {
   if (typeof window === "undefined") return "";
@@ -69,8 +70,11 @@ export default function LoginPage() {
         .wrap {
           min-height: 100vh;
           padding: 18px;
-          display: grid;
-          place-items: center;
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          justify-content: center;
+          gap: 18px;
         }
 
         .card {
@@ -276,6 +280,10 @@ export default function LoginPage() {
             Back
           </Link>
         </div>
+      </div>
+
+      <div style={{ width: "100%", maxWidth: 560 }}>
+        <SiteFooter className="mt-2" />
       </div>
     </main>
   );

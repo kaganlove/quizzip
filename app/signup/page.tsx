@@ -3,6 +3,7 @@
 import { useState } from "react";
 import Link from "next/link";
 import { supabaseBrowser } from "../../lib/supabaseClient";
+import SiteFooter from "../../components/SiteFooter";
 
 export default function SignupPage() {
   const supabase = supabaseBrowser();
@@ -18,7 +19,11 @@ export default function SignupPage() {
       <div style={{ height: 18 }} />
 
       <label style={{ display: "block", fontWeight: 800 }}>Email</label>
-      <input value={email} onChange={(e) => setEmail(e.target.value)} style={{ width: "100%", padding: 10, marginTop: 6 }} />
+      <input
+        value={email}
+        onChange={(e) => setEmail(e.target.value)}
+        style={{ width: "100%", padding: 10, marginTop: 6 }}
+      />
 
       <div style={{ height: 12 }} />
 
@@ -49,8 +54,24 @@ export default function SignupPage() {
       <div style={{ height: 14 }} />
 
       <div style={{ display: "flex", gap: 14, flexWrap: "wrap" }}>
-        <Link href="/login" style={{ textDecoration: "underline" }}>Log in</Link>
-        <Link href="/" style={{ textDecoration: "underline" }}>Back</Link>
+        <Link href="/login" style={{ textDecoration: "underline" }}>
+          Log in
+        </Link>
+        <Link href="/" style={{ textDecoration: "underline" }}>
+          Back
+        </Link>
+      </div>
+
+      <div style={{ marginTop: 28 }}>
+        <div
+          style={{
+            background: "#070a12",
+            borderRadius: 12,
+            padding: 16,
+          }}
+        >
+          <SiteFooter />
+        </div>
       </div>
     </main>
   );

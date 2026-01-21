@@ -3,6 +3,7 @@
 import { useState } from "react";
 import Link from "next/link";
 import { supabaseBrowser } from "../../lib/supabaseClient";
+import SiteFooter from "../../components/SiteFooter";
 
 export default function ResetPage() {
   const supabase = supabaseBrowser();
@@ -40,8 +41,16 @@ export default function ResetPage() {
       <div style={{ height: 14 }} />
 
       <div style={{ display: "flex", gap: 14, flexWrap: "wrap" }}>
-        <Link href="/login" style={{ textDecoration: "underline" }}>Log in</Link>
-        <Link href="/" style={{ textDecoration: "underline" }}>Back</Link>
+        <Link href="/login" style={{ textDecoration: "underline" }}>
+          Log in
+        </Link>
+        <Link href="/" style={{ textDecoration: "underline" }}>
+          Back
+        </Link>
+      </div>
+
+      <div style={{ marginTop: 28 }}>
+        <SiteFooter />
       </div>
     </main>
   );

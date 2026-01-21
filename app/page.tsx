@@ -1,4 +1,5 @@
 import Link from "next/link";
+import SiteFooter from "../components/SiteFooter";
 
 export const metadata = {
   title: "Quizzip",
@@ -96,9 +97,7 @@ export default function LandingPage() {
               <span className="priceSmall">per month</span>
             </div>
 
-            <div className="p small">
-              For instructional designers and faculty who manage Canvas question banks.
-            </div>
+            <div className="p small">For instructional designers and faculty who manage Canvas question banks.</div>
 
             <ul className="list">
               <li>Preview Canvas exports in a clean UI</li>
@@ -127,9 +126,7 @@ export default function LandingPage() {
             <div>
               <div className="kicker">What you get</div>
               <h2 className="h2">A simple quiz pipeline</h2>
-              <p className="p">
-                Preview first, convert when needed, then export for Canvas or Word.
-              </p>
+              <p className="p">Preview first, convert when needed, then export for Canvas or Word.</p>
 
               <div className="previewBullets">
                 <div className="bullet">
@@ -144,7 +141,9 @@ export default function LandingPage() {
                   <div className="bulletDot" aria-hidden="true" />
                   <div>
                     <div className="bulletTitle">Convert</div>
-                    <div className="bulletBody">Use formatted import for template style inputs, or Smart import for messy content.</div>
+                    <div className="bulletBody">
+                      Use formatted import for template style inputs, or Smart import for messy content.
+                    </div>
                   </div>
                 </div>
 
@@ -218,7 +217,8 @@ export default function LandingPage() {
           <details className="qa">
             <summary>Do my files get uploaded anywhere</summary>
             <div className="qaBody">
-              Preview and formatted import run locally in your browser. Smart import is processed on the server so we can generate your QTI zip.
+              Preview and formatted import run locally in your browser. Smart import is processed on the server so we can
+              generate your QTI zip.
             </div>
           </details>
 
@@ -230,14 +230,16 @@ export default function LandingPage() {
           <details className="qa">
             <summary>What formats does Smart import accept</summary>
             <div className="qaBody">
-              Paste text or upload docx, xlsx, csv, tsv, or txt. If your content has clear numbering and answers, Smart import can usually normalize it.
+              Paste text or upload docx, xlsx, csv, tsv, or txt. If your content has clear numbering and answers, Smart
+              import can usually normalize it.
             </div>
           </details>
 
           <details className="qa">
             <summary>What question types are supported</summary>
             <div className="qaBody">
-              Multiple choice, multiple answers, true or false, short answer, essay, and file upload. If something is ambiguous, we flag it for review.
+              Multiple choice, multiple answers, true or false, short answer, essay, and file upload. If something is
+              ambiguous, we flag it for review.
             </div>
           </details>
 
@@ -255,9 +257,7 @@ export default function LandingPage() {
 
           <details className="qa">
             <summary>What are the Smart import limits per upload</summary>
-            <div className="qaBody">
-              If you hit the limit, we will ask you to split the content into smaller batches for best results.
-            </div>
+            <div className="qaBody">If you hit the limit, we will ask you to split the content into smaller batches for best results.</div>
           </details>
 
           <details className="qa">
@@ -268,14 +268,16 @@ export default function LandingPage() {
           <details className="qa">
             <summary>Will the QTI zip import cleanly into Canvas</summary>
             <div className="qaBody">
-              Yes for Canvas Classic. We still recommend importing into a sandbox course first, especially for important exams.
+              Yes for Canvas Classic. We still recommend importing into a sandbox course first, especially for important
+              exams.
             </div>
           </details>
 
           <details className="qa">
             <summary>Can multiple people use one account</summary>
             <div className="qaBody">
-              A single subscription is intended for one user. If you need a department license, reach out and we will set it up.
+              A single subscription is intended for one user. If you need a department license, reach out and we will set
+              it up.
             </div>
           </details>
 
@@ -290,20 +292,8 @@ export default function LandingPage() {
           </details>
         </section>
 
-        <footer className="footer">
-          <div className="footerLeft">© {new Date().getFullYear()} Quizzip</div>
-          <div className="footerRight">
-            <Link className="footerLink" href="/login?next=/app">
-              Log in
-            </Link>
-            <span className="footerSep" aria-hidden="true">
-              •
-            </span>
-            <Link className="footerLink" href="/signup">
-              Create account
-            </Link>
-          </div>
-        </footer>
+        {/* Shared footer (consistent across pages) */}
+        <SiteFooter className="mt-8" />
       </div>
 
       <style>{css}</style>
@@ -699,21 +689,6 @@ const css = `
     font-size:13px;
     line-height:1.6;
   }
-
-  .footer{
-    margin-top:34px;
-    padding-top:6px;
-    display:flex;
-    align-items:center;
-    justify-content:space-between;
-    gap:10px;
-    opacity:0.65;
-    font-size:12px;
-  }
-  .footerRight{display:flex; gap:10px; align-items:center; flex-wrap:wrap;}
-  .footerLink{color:rgba(255,255,255,0.72); text-decoration:none; font-weight:900;}
-  .footerLink:hover{color:rgba(255,255,255,0.92);}
-  .footerSep{opacity:0.45;}
 
   @media (max-width: 940px){
     .nav{display:none;}
