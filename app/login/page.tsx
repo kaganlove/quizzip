@@ -252,4 +252,31 @@ export default function LoginPage() {
 
         {msg ? (
           <div style={{ marginTop: 12 }}>
-            <div className="small" style={{ border: "1px solid r
+            <div
+              className="small"
+              style={{
+                border: "1px solid rgba(255, 99, 99, 0.35)",
+                borderRadius: 14,
+                padding: 12,
+              }}
+            >
+              {msg}
+            </div>
+          </div>
+        ) : null}
+
+        <div className="links">
+          <Link className="link" href="/signup">
+            Create account
+          </Link>
+          <Link className="link" href="/reset">
+            Forgot password
+          </Link>
+          <Link className="link" href="/">
+            Back
+          </Link>
+        </div>
+      </div>
+    </main>
+  );
+}
