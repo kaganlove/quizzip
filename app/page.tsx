@@ -235,8 +235,53 @@ export default function LandingPage() {
           </details>
 
           <details className="qa">
+            <summary>What question types are supported</summary>
+            <div className="qaBody">
+              Multiple choice, multiple answers, true or false, short answer, essay, and file upload. If something is ambiguous, we flag it for review.
+            </div>
+          </details>
+
+          <details className="qa">
+            <summary>What does unlimited formatted import mean</summary>
+            <div className="qaBody">
+              If you use our formatted input style, conversion and export are unlimited because it does not require AI.
+            </div>
+          </details>
+
+          <details className="qa">
             <summary>What counts toward the 1,000 Smart import questions</summary>
             <div className="qaBody">Only Smart import conversions. Preview and formatted import exports do not count.</div>
+          </details>
+
+          <details className="qa">
+            <summary>What are the Smart import limits per upload</summary>
+            <div className="qaBody">
+              If you hit the limit, we will ask you to split the content into smaller batches for best results.
+            </div>
+          </details>
+
+          <details className="qa">
+            <summary>Can I export a Word document too</summary>
+            <div className="qaBody">Yes. Word export is generated in your browser. Images are included.</div>
+          </details>
+
+          <details className="qa">
+            <summary>Will the QTI zip import cleanly into Canvas</summary>
+            <div className="qaBody">
+              Yes for Canvas Classic. We still recommend importing into a sandbox course first, especially for important exams.
+            </div>
+          </details>
+
+          <details className="qa">
+            <summary>Can multiple people use one account</summary>
+            <div className="qaBody">
+              A single subscription is intended for one user. If you need a department license, reach out and we will set it up.
+            </div>
+          </details>
+
+          <details className="qa">
+            <summary>Do you offer annual billing</summary>
+            <div className="qaBody">Yes. You can switch plans inside the app.</div>
           </details>
 
           <details className="qa">
