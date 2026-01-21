@@ -4,6 +4,13 @@ import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { supabaseBrowser } from "../../lib/supabaseClient";
 
+function getCanonicalOrigin(): string {
+  if (typeof window === "undefined") return "";
+  const url = new URL(window.location.href);
+  const host = url.hostname.startsWith("www.") ? url.hostname.slice(4) : url.hostname;
+  return `${url.protocol}//${host}`;
+}
+
 export default function LoginPage() {
   const supabase = supabaseBrowser();
   const [email, setEmail] = useState("");
@@ -26,7 +33,9 @@ export default function LoginPage() {
 
   async function signInWithGoogle() {
     setMsg("");
-    const redirectTo = `${window.location.origin}/auth/callback?next=${encodeURIComponent(targetNext)}`;
+
+    const origin = getCanonicalOrigin() || (typeof window !== "undefined" ? window.location.origin : "");
+    const redirectTo = `${origin}/auth/callback?next=${encodeURIComponent(targetNext)}`;
 
     const { error } = await supabase.auth.signInWithOAuth({
       provider: "google",
@@ -243,24 +252,4 @@ export default function LoginPage() {
 
         {msg ? (
           <div style={{ marginTop: 12 }}>
-            <div className="small" style={{ border: "1px solid rgba(255, 99, 99, 0.35)", borderRadius: 14, padding: 12 }}>
-              {msg}
-            </div>
-          </div>
-        ) : null}
-
-        <div className="links">
-          <Link className="link" href="/signup">
-            Create account
-          </Link>
-          <Link className="link" href="/reset">
-            Forgot password
-          </Link>
-          <Link className="link" href="/">
-            Back
-          </Link>
-        </div>
-      </div>
-    </main>
-  );
-}
+            <div className="small" style={{ border: "1px solid r
