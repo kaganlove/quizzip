@@ -169,9 +169,8 @@ export default function PricingPage() {
                 <span className="priceBig">$7.50</span>
                 <span className="priceSmall">per month</span>
               </div>
-              <div className="subLine">billed yearly</div>
-              <div className="orLine">$90 per year</div>
-              <div className="altLine">or $9 per month</div>
+              <div className="subLine">billed at $90 yearly</div>
+              <div className="altLine">or $9 monthly subscription</div>
             </div>
 
             <p className="pSmall">

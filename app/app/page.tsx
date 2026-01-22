@@ -1,5 +1,7 @@
 "use client";
 
+export const dynamic = "force-dynamic";
+
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import DOMPurify from "dompurify";
@@ -944,20 +946,23 @@ export default function Page() {
                     Create account
                   </Link>
                   <div className="small" style={{ marginTop: 10 }}>
-                    Monthly 9 dollars. Yearly 90 dollars.
+                    $7.50 per month billed at $90 yearly. Or $9 per month.
                   </div>
                 </>
               ) : (
                 <>
                   {!isPaid ? (
                     <>
-                      <button className="btn btnPrimary" onClick={() => void startCheckout("monthly")}>
-                        Subscribe monthly
-                      </button>
-                      <div style={{ height: 10 }} />
-                      <button className="btn btnOutline" onClick={() => void startCheckout("yearly")}>
+                      <button className="btn btnPrimary" onClick={() => void startCheckout("yearly")}>
                         Subscribe yearly
                       </button>
+                      <div style={{ height: 10 }} />
+                      <button className="btn btnOutline" onClick={() => void startCheckout("monthly")}>
+                        Subscribe monthly
+                      </button>
+                      <div className="small" style={{ marginTop: 10 }}>
+                        $7.50 per month billed at $90 yearly. Or $9 per month.
+                      </div>
                       <div className="small" style={{ marginTop: 10 }}>
                         After payment, return here and exports unlock automatically.
                       </div>
@@ -1040,11 +1045,15 @@ export default function Page() {
                     </>
                   ) : (
                     <>
-                      <button className="btn btnPrimary" onClick={() => void startCheckout("monthly")}>
-                        Unlock conversion
+                      <button className="btn btnPrimary" onClick={() => void startCheckout("yearly")}>
+                        Unlock conversion yearly
+                      </button>
+                      <div style={{ height: 10 }} />
+                      <button className="btn btnOutline" onClick={() => void startCheckout("monthly")}>
+                        Unlock conversion monthly
                       </button>
                       <div className="small" style={{ marginTop: 10 }}>
-                        Want yearly. Choose it from the account menu.
+                        $7.50 per month billed at $90 yearly. Or $9 per month.
                       </div>
                     </>
                   )}

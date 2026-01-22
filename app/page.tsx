@@ -90,34 +90,41 @@ export default function LandingPage() {
 
           {/* Pricing */}
           <aside id="pricing" className="card heroRight">
-            <div className="kicker">Pricing</div>
+  <div className="kicker">Pricing</div>
 
-            <div className="price">
-              <span className="priceBig">$9</span>
-              <span className="priceSmall">per month</span>
-            </div>
+  <div className="price">
+    <span className="priceBig">$7.50</span>
+    <span className="priceSmall">per month</span>
+  </div>
 
-            <div className="p small">For instructional designers and faculty who manage Canvas question banks.</div>
+  <div className="finePrint">
+    billed at $90 yearly
+    <br />
+    or $9 per month
+  </div>
 
-            <ul className="list">
-              <li>Preview Canvas exports in a clean UI</li>
-              <li>Export to Word with images</li>
-              <li>Unlimited formatted imports and QTI export</li>
-              <li>
-                Smart import for messy docs and spreadsheets includes <strong>1,000 questions</strong> per month
-              </li>
-              <li>One review pass before export</li>
-              <li>Manage billing anytime</li>
-            </ul>
+  <div className="p small">For instructional designers and faculty who manage Canvas question banks.</div>
 
-            <Link className="btn btnPrimary full" href="/signup">
-              Start now
-            </Link>
+  <ul className="list">
+    <li>Preview Canvas exports in a clean UI</li>
+    <li>Export to Word with images</li>
+    <li>Unlimited formatted imports and QTI export</li>
+    <li>
+      Smart import for messy docs and spreadsheets includes <strong>1,000 questions</strong> per month
+    </li>
+    <li>One review pass before export</li>
+    <li>Manage billing anytime</li>
+  </ul>
 
-            <div className="finePrint">
-              Cancel anytime. Preview and formatted import stay local. Smart import uses AI and is metered.
-            </div>
-          </aside>
+  <Link className="btn btnPrimary full" href="/signup?billing=yearly">
+    Start yearly
+  </Link>
+
+  <div className="finePrint">
+    Cancel anytime. Preview and formatted import stay local. Smart import uses AI and is metered.
+  </div>
+</aside>
+
         </section>
 
         {/* What you get */}
