@@ -22,13 +22,16 @@ export async function POST(req: Request) {
 
   const body = await req.json().catch(() => ({} as any));
   const access_token = body?.access_token as string | undefined;
-  const billing = (body?.billing as string | undefined) ?? "monthly";
+
+  const billingRaw = String(body?.billing ?? body?.plan ?? body?.interval ?? "monthly")
+    .trim()
+    .toLowerCase();
+  const isYearly = ["yearly", "annual", "annually", "year"].includes(billingRaw);
 
   if (!access_token) {
     return NextResponse.json({ error: "Missing access_token" }, { status: 401 });
   }
 
-  // IMPORTANT: supabaseAdmin is a function that returns the client
   const admin = supabaseAdmin();
 
   const { data: userRes, error: userErr } = await admin.auth.getUser(access_token);
@@ -42,7 +45,6 @@ export async function POST(req: Request) {
 
   const stripe = new Stripe(secretKey);
 
-  // Find existing Stripe customer id if we already have one
   const { data: subRow } = await admin
     .from("subscriptions")
     .select("stripe_customer_id")
@@ -58,13 +60,12 @@ export async function POST(req: Request) {
     });
     customerId = customer.id;
   } else {
-    // Ensure metadata is present (helps webhook fallback)
     await stripe.customers.update(customerId, {
       metadata: { user_id: userId },
     });
   }
 
-  const priceId = billing === "yearly" ? priceYearly : priceMonthly;
+  const priceId = isYearly ? priceYearly : priceMonthly;
 
   const session = await stripe.checkout.sessions.create({
     mode: "subscription",

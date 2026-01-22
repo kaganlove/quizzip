@@ -1,4 +1,3 @@
-// app/pricing/page.tsx
 import Link from "next/link";
 import SiteFooter from "../../components/SiteFooter";
 
@@ -22,9 +21,10 @@ export default function PricingPage() {
   return (
     <main className="wrap">
       <div className="container">
+        {/* Header updated only */}
         <header className="topbar">
-          <Link className="brandLink" href="/" aria-label="Go to landing page">
-            <img className="logoImg" src="/quizzip-logo.png" alt="Quizzip logo" />
+          <Link href="/" className="brandLink">
+            <img className="logoImgSm" src="/quizzip-logo.png" alt="Quizzip" />
             <div className="brandText">
               <div className="brandName">Quizzip</div>
               <div className="brandSub">Canvas quiz tools that just work</div>
@@ -41,14 +41,17 @@ export default function PricingPage() {
             <Link className="navLink" href="/#faq">
               FAQ
             </Link>
+            <Link className="navLink" href="/privacy">
+              Privacy
+            </Link>
+            <Link className="navLink" href="/contact">
+              Contact
+            </Link>
           </nav>
 
           <div className="actions">
-            <Link className="btn btnPrimary" href="/login?next=/app">
+            <Link className="btn btnOutline" href="/login">
               Log in
-            </Link>
-            <Link className="btn btnOutline" href="/signup">
-              Create account
             </Link>
           </div>
         </header>
@@ -57,8 +60,7 @@ export default function PricingPage() {
           <section className="card mainCol">
             <h1 className="h1">Pricing built around your workflow</h1>
             <p className="p">
-              Preview Canvas Classic QTI exports locally in your browser, then upgrade when you need to convert messy
-              question banks into a Canvas import zip.
+              Preview Canvas Classic QTI exports locally in your browser, then upgrade when you need to convert messy question banks into a Canvas import zip.
             </p>
 
             <div className="stepGrid">
@@ -84,8 +86,7 @@ export default function PricingPage() {
             <div className="blockCard">
               <h2 className="h2">What counts toward the 1,000 questions</h2>
               <p className="pSmall">
-                Only smart import uses AI and counts toward your monthly question allowance. Preview and formatted import
-                do not count toward the meter.
+                Only smart import uses AI and counts toward your monthly question allowance. Preview and formatted import do not count toward the meter.
               </p>
 
               <div className="twoCol">
@@ -109,9 +110,7 @@ export default function PricingPage() {
                 </div>
               </div>
 
-              <p className="fine">
-                Note: question estimates are best effort. If your source content is ambiguous, counts may vary slightly.
-              </p>
+              <p className="fine">Note: question estimates are best effort. If your source content is ambiguous, counts may vary slightly.</p>
             </div>
 
             <div className="blockCard">
@@ -120,9 +119,7 @@ export default function PricingPage() {
               <div className="twoCol">
                 <div className="innerCard">
                   <div className="bigInnerTitle">Formatted import</div>
-                  <p className="pSmall">
-                    Best when your content already follows the Quizzip template. Converts instantly without AI.
-                  </p>
+                  <p className="pSmall">Best when your content already follows the Quizzip template. Converts instantly without AI.</p>
                   <ul className="innerList">
                     <li>Unlimited runs</li>
                     <li>No AI usage</li>
@@ -133,8 +130,7 @@ export default function PricingPage() {
                 <div className="innerCard">
                   <div className="bigInnerTitle">Smart import</div>
                   <p className="pSmall">
-                    Best for messy, mixed format content like docs, spreadsheets, and copy paste. Uses AI to normalize
-                    and generate a clean Canvas import zip.
+                    Best for messy, mixed format content like docs, spreadsheets, and copy paste. Uses AI to normalize and generate a clean Canvas import zip.
                   </p>
                   <ul className="innerList">
                     <li>Metered up to 1,000 questions per month</li>
@@ -149,9 +145,12 @@ export default function PricingPage() {
           <aside className="card sideCol">
             <div className="kicker">Subscription</div>
 
-            <div className="price">
-              <span className="priceBig">$9</span>
-              <span className="priceSmall">per month</span>
+            <div className="priceStack">
+              <div className="price">
+                <span className="priceBig">$9</span>
+                <span className="priceSmall">per month</span>
+              </div>
+              <div className="orLine">or $90 per year</div>
             </div>
 
             <p className="pSmall">Built for instructional designers and faculty who manage Canvas question banks.</p>
@@ -165,9 +164,14 @@ export default function PricingPage() {
               <Check>Manage billing anytime via Stripe portal</Check>
             </ul>
 
-            <Link className="btn btnPrimary full" href="/login">
-              Start now
-            </Link>
+            <div className="ctaStack">
+              <Link className="btn btnPrimary full" href="/login?next=/app&billing=monthly">
+                Start monthly
+              </Link>
+              <Link className="btn btnOutline full" href="/login?next=/app&billing=yearly">
+                Start yearly
+              </Link>
+            </div>
 
             <div className="fine">Preview and formatted import stay local. Smart import uses AI and is metered.</div>
           </aside>
@@ -221,21 +225,22 @@ const css = `
   .brandLink{
     display:flex;
     align-items:center;
-    gap:14px;
+    gap:12px;
     text-decoration:none;
     color:inherit;
   }
 
-  .logoImg{
-    width:64px;
-    height:64px;
+  .logoImgSm{
+    width:46px;
+    height:46px;
     object-fit:contain;
     display:block;
     filter: drop-shadow(0 10px 22px rgba(0,0,0,0.35));
   }
+
   .brandText{display:flex; flex-direction:column; gap:5px;}
-  .brandName{font-weight:1000; font-size:20px; letter-spacing:-0.2px;}
-  .brandSub{opacity:0.70; font-size:12px;}
+  .brandName{font-weight:1000; font-size:18px; letter-spacing:-0.2px; line-height:1;}
+  .brandSub{opacity:0.70; font-size:12px; line-height:1.2;}
 
   .nav{display:flex; gap:16px; align-items:center;}
   .navLink{
@@ -378,8 +383,8 @@ const css = `
     margin-bottom:14px;
   }
 
+  .priceStack{ margin-top:10px; }
   .price{
-    margin-top:10px;
     display:flex;
     gap:10px;
     align-items:baseline;
@@ -391,6 +396,12 @@ const css = `
   }
   .priceSmall{
     font-size:13px;
+    opacity:0.72;
+    font-weight:900;
+  }
+  .orLine{
+    margin-top:6px;
+    font-size:12px;
     opacity:0.72;
     font-weight:900;
   }
@@ -412,6 +423,8 @@ const css = `
     flex:0 0 auto;
   }
   .checkText{ opacity:0.86; font-size:13px; line-height:1.55; font-weight:800; }
+
+  .ctaStack{ margin-top:16px; display:flex; flex-direction:column; gap:10px; }
 
   .fine{ margin-top:14px; font-size:12px; opacity:0.70; line-height:1.45; }
 
