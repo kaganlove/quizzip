@@ -23,10 +23,12 @@ export default function PricingPage() {
       <div className="container">
         <header className="topbar">
           <Link href="/" className="brandLink" aria-label="Go to landing page">
-            <img className="logoImgSm" src="/quizzip-logo.png" alt="Quizzip" />
-            <div className="brandText">
-              <div className="brandName">Quizzip</div>
-              <div className="brandSub">Canvas quiz tools that just work</div>
+            <div className="brand">
+              <img className="logoImg" src="/quizzip-logo.png" alt="Quizzip" />
+              <div className="brandText">
+                <div className="brandName">Quizzip</div>
+                <div className="brandSub">Canvas quiz tools that just work</div>
+              </div>
             </div>
           </Link>
 
@@ -208,7 +210,12 @@ const css = `
     background-repeat:no-repeat;
   }
 
-  .container{ max-width:1080px; margin:0 auto; position:relative; z-index:1; }
+  .container{
+    max-width:1080px;
+    margin:0 auto;
+    position:relative;
+    z-index:1;
+  }
 
   .topbar{
     display:flex;
@@ -219,24 +226,27 @@ const css = `
   }
 
   .brandLink{
-    display:flex;
-    align-items:center;
-    gap:12px;
     text-decoration:none;
     color:inherit;
   }
 
-  .logoImgSm{
-    width:46px;
-    height:46px;
+  .brand{
+    display:flex;
+    align-items:center;
+    gap:14px;
+  }
+
+  .logoImg{
+    width:64px;
+    height:64px;
     object-fit:contain;
     display:block;
     filter: drop-shadow(0 10px 22px rgba(0,0,0,0.35));
   }
 
   .brandText{display:flex; flex-direction:column; gap:5px;}
-  .brandName{font-weight:1000; font-size:18px; letter-spacing:-0.2px; line-height:1;}
-  .brandSub{opacity:0.70; font-size:12px; line-height:1.2;}
+  .brandName{font-weight:1000; font-size:20px; letter-spacing:-0.2px;}
+  .brandSub{opacity:0.70; font-size:12px;}
 
   .nav{display:flex; gap:16px; align-items:center;}
   .navLink{
@@ -293,9 +303,9 @@ const css = `
 
   .grid{
     display:grid;
-    grid-template-columns: 1.25fr 0.75fr;
+    grid-template-columns: 1.22fr 0.78fr;
     gap:22px;
-    align-items:start;
+    align-items:stretch;
   }
 
   .h1{
