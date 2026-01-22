@@ -21,9 +21,8 @@ export default function PricingPage() {
   return (
     <main className="wrap">
       <div className="container">
-        {/* Header updated only */}
         <header className="topbar">
-          <Link href="/" className="brandLink">
+          <Link href="/" className="brandLink" aria-label="Go to landing page">
             <img className="logoImgSm" src="/quizzip-logo.png" alt="Quizzip" />
             <div className="brandText">
               <div className="brandName">Quizzip</div>
@@ -41,17 +40,14 @@ export default function PricingPage() {
             <Link className="navLink" href="/#faq">
               FAQ
             </Link>
-            <Link className="navLink" href="/privacy">
-              Privacy
-            </Link>
-            <Link className="navLink" href="/contact">
-              Contact
-            </Link>
           </nav>
 
           <div className="actions">
-            <Link className="btn btnOutline" href="/login">
+            <Link className="btn btnPrimary" href="/login">
               Log in
+            </Link>
+            <Link className="btn btnOutline" href="/signup">
+              Create account
             </Link>
           </div>
         </header>
