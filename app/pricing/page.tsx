@@ -23,13 +23,13 @@ export default function PricingPage() {
     <main className="wrap">
       <div className="container">
         <header className="topbar">
-          <div className="brand">
+          <Link className="brandLink" href="/" aria-label="Go to landing page">
             <img className="logoImg" src="/quizzip-logo.png" alt="Quizzip logo" />
             <div className="brandText">
               <div className="brandName">Quizzip</div>
               <div className="brandSub">Canvas quiz tools that just work</div>
             </div>
-          </div>
+          </Link>
 
           <nav className="nav">
             <Link className="navLink" href="/how-it-works">
@@ -218,11 +218,14 @@ const css = `
     margin-bottom:22px;
   }
 
-  .brand{
+  .brandLink{
     display:flex;
     align-items:center;
     gap:14px;
+    text-decoration:none;
+    color:inherit;
   }
+
   .logoImg{
     width:64px;
     height:64px;
