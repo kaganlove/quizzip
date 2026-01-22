@@ -1,14 +1,11 @@
+import type React from "react";
 import Link from "next/link";
 import SiteFooter from "./SiteFooter";
 
-export default function SiteShell({
-  children,
-}: {
-  children: React.ReactNode;
-}) {
+export default function SiteShell({ children }: { children: React.ReactNode }) {
   return (
     <main className="min-h-screen bg-[radial-gradient(1200px_700px_at_10%_10%,#1b2a55_0%,#0b1020_45%,#070a12_100%)] text-white">
-      <div className="mx-auto max-w-5xl px-6 py-10">
+      <div className="mx-auto w-full max-w-5xl px-6 py-10">
         <header className="flex items-center justify-between gap-4">
           <Link href="/" className="flex items-center gap-3">
             <img
@@ -39,9 +36,9 @@ export default function SiteShell({
         </header>
 
         {children}
-
-        <SiteFooter />
       </div>
+
+      <SiteFooter />
     </main>
   );
 }
