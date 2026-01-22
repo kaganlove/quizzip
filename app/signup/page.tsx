@@ -2,14 +2,18 @@
 
 import { useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { supabaseBrowser } from "../../lib/supabaseClient";
 import SiteFooter from "../../components/SiteFooter";
 
 export default function SignupPage() {
   const supabase = supabaseBrowser();
+  const router = useRouter();
+
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [msg, setMsg] = useState("");
+  const [busy, setBusy] = useState(false);
 
   return (
     <main style={{ padding: 24, maxWidth: 520 }}>
@@ -23,6 +27,7 @@ export default function SignupPage() {
         value={email}
         onChange={(e) => setEmail(e.target.value)}
         style={{ width: "100%", padding: 10, marginTop: 6 }}
+        autoComplete="email"
       />
 
       <div style={{ height: 12 }} />
@@ -33,20 +38,43 @@ export default function SignupPage() {
         onChange={(e) => setPassword(e.target.value)}
         type="password"
         style={{ width: "100%", padding: 10, marginTop: 6 }}
+        autoComplete="new-password"
       />
 
       <div style={{ height: 16 }} />
 
       <button
+        disabled={busy}
         onClick={async () => {
           setMsg("");
-          const { error } = await supabase.auth.signUp({ email, password });
-          if (error) setMsg(error.message);
-          else setMsg("Account created. You can log in now.");
+          setBusy(true);
+
+          const emailRedirectTo =
+            typeof window !== "undefined" ? `${window.location.origin}/auth/callback` : undefined;
+
+          const { data, error } = await supabase.auth.signUp({
+            email,
+            password,
+            options: emailRedirectTo ? { emailRedirectTo } : undefined,
+          });
+
+          setBusy(false);
+
+          if (error) {
+            setMsg(error.message);
+            return;
+          }
+
+          if (data?.session) {
+            router.push("/app");
+            return;
+          }
+
+          setMsg("Account created. Check your email to confirm, then return to log in.");
         }}
-        style={{ padding: "10px 14px", fontWeight: 800 }}
+        style={{ padding: "10px 14px", fontWeight: 800, opacity: busy ? 0.7 : 1 }}
       >
-        Create account
+        {busy ? "Creating account..." : "Create account"}
       </button>
 
       {msg && <p style={{ marginTop: 12 }}>{msg}</p>}
