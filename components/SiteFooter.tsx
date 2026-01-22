@@ -13,34 +13,47 @@ export default function SiteFooter({ className = "", ...rest }: SiteFooterProps)
       ].join(" ")}
       {...rest}
     >
-      <div className="mx-auto max-w-6xl px-6 py-8 text-sm text-white/70">
-        <div className="flex flex-col items-center gap-5 text-center md:flex-row md:justify-between md:text-left">
-          <div className="flex flex-wrap items-center justify-center gap-2 md:justify-start">
-            <span className="font-extrabold text-white/85">Quizzip</span>
-            <span className="text-white/55">Canvas quiz tools that just work</span>
-          </div>
+      <div className="mx-auto max-w-6xl px-6 py-10 text-sm text-white/70">
+        <div className="flex flex-col items-center text-center">
+          <div className="text-white/75">Canvas quiz tools that just work</div>
 
-          <nav className="flex flex-wrap items-center justify-center gap-x-6 gap-y-2">
-            <Link className="hover:text-white/95" href="/privacy">
+          <div className="h-4" />
+
+          <nav className="flex flex-wrap items-center justify-center gap-x-8 gap-y-3">
+            <Link className="hover:text-white" href="/privacy">
               Privacy
             </Link>
-            <Link className="hover:text-white/95" href="/terms">
+            <span aria-hidden="true" className="text-white/25">
+              |
+            </span>
+            <Link className="hover:text-white" href="/terms">
               Terms
             </Link>
-            <Link className="hover:text-white/95" href="/refunds">
+            <span aria-hidden="true" className="text-white/25">
+              |
+            </span>
+            <Link className="hover:text-white" href="/refunds">
               Refunds
             </Link>
-            <Link className="hover:text-white/95" href="/accessibility">
+            <span aria-hidden="true" className="text-white/25">
+              |
+            </span>
+            <Link className="hover:text-white" href="/accessibility">
               Accessibility
             </Link>
-            <Link className="hover:text-white/95" href="/contact">
+            <span aria-hidden="true" className="text-white/25">
+              |
+            </span>
+            <Link className="hover:text-white" href="/contact">
               Contact
             </Link>
           </nav>
-        </div>
 
-        <div className="mt-5 text-center text-xs text-white/50 md:text-left">
-          © {new Date().getFullYear()} Quizzip. All rights reserved.
+          <div className="h-5" />
+
+          <div className="text-xs text-white/50">
+            © {new Date().getFullYear()} Quizzip. All rights reserved.
+          </div>
         </div>
       </div>
     </footer>

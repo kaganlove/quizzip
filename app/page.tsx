@@ -117,7 +117,7 @@ export default function LandingPage() {
   </ul>
 
   <Link className="btn btnPrimary full" href="/signup?billing=yearly">
-    Start yearly
+    Get Started
   </Link>
 
   <div className="finePrint">
