@@ -58,33 +58,46 @@ export default function PricingPage() {
           <section className="card mainCol">
             <h1 className="h1">Pricing built around your workflow</h1>
             <p className="p">
-              Preview Canvas Classic QTI exports locally in your browser, then upgrade when you need to convert messy question banks into a Canvas import zip.
+              Preview Canvas Classic QTI exports locally in your browser, then
+              upgrade when you need to convert messy question banks into a
+              Canvas import zip.
             </p>
 
             <div className="stepGrid">
               <div className="miniCard">
                 <div className="miniKicker">Step 1</div>
                 <div className="miniTitle">Preview</div>
-                <p className="miniBody">Drop in a Canvas Classic export zip and review questions in a clean UI.</p>
+                <p className="miniBody">
+                  Drop in a Canvas Classic export zip and review questions in a
+                  clean UI.
+                </p>
               </div>
 
               <div className="miniCard">
                 <div className="miniKicker">Step 2</div>
                 <div className="miniTitle">Import</div>
-                <p className="miniBody">Use formatted import for template ready content, or smart import for messy docs.</p>
+                <p className="miniBody">
+                  Use formatted import for template ready content, or smart
+                  import for messy docs.
+                </p>
               </div>
 
               <div className="miniCard">
                 <div className="miniKicker">Step 3</div>
                 <div className="miniTitle">Export</div>
-                <p className="miniBody">Download a Canvas import zip, plus a Word export with images for review.</p>
+                <p className="miniBody">
+                  Download a Canvas import zip, plus a Word export with images
+                  for review.
+                </p>
               </div>
             </div>
 
             <div className="blockCard">
               <h2 className="h2">What counts toward the 1,000 questions</h2>
               <p className="pSmall">
-                Only smart import uses AI and counts toward your monthly question allowance. Preview and formatted import do not count toward the meter.
+                Only smart import uses AI and counts toward your monthly
+                question allowance. Preview and formatted import do not count
+                toward the meter.
               </p>
 
               <div className="twoCol">
@@ -108,7 +121,10 @@ export default function PricingPage() {
                 </div>
               </div>
 
-              <p className="fine">Note: question estimates are best effort. If your source content is ambiguous, counts may vary slightly.</p>
+              <p className="fine">
+                Note: question estimates are best effort. If your source content
+                is ambiguous, counts may vary slightly.
+              </p>
             </div>
 
             <div className="blockCard">
@@ -117,7 +133,10 @@ export default function PricingPage() {
               <div className="twoCol">
                 <div className="innerCard">
                   <div className="bigInnerTitle">Formatted import</div>
-                  <p className="pSmall">Best when your content already follows the Quizzip template. Converts instantly without AI.</p>
+                  <p className="pSmall">
+                    Best when your content already follows the Quizzip template.
+                    Converts instantly without AI.
+                  </p>
                   <ul className="innerList">
                     <li>Unlimited runs</li>
                     <li>No AI usage</li>
@@ -128,7 +147,9 @@ export default function PricingPage() {
                 <div className="innerCard">
                   <div className="bigInnerTitle">Smart import</div>
                   <p className="pSmall">
-                    Best for messy, mixed format content like docs, spreadsheets, and copy paste. Uses AI to normalize and generate a clean Canvas import zip.
+                    Best for messy, mixed format content like docs, spreadsheets,
+                    and copy paste. Uses AI to normalize and generate a clean
+                    Canvas import zip.
                   </p>
                   <ul className="innerList">
                     <li>Metered up to 1,000 questions per month</li>
@@ -145,13 +166,18 @@ export default function PricingPage() {
 
             <div className="priceStack">
               <div className="price">
-                <span className="priceBig">$9</span>
+                <span className="priceBig">$7.50</span>
                 <span className="priceSmall">per month</span>
               </div>
-              <div className="orLine">or $90 per year</div>
+              <div className="subLine">billed yearly</div>
+              <div className="orLine">$90 per year</div>
+              <div className="altLine">or $9 per month</div>
             </div>
 
-            <p className="pSmall">Built for instructional designers and faculty who manage Canvas question banks.</p>
+            <p className="pSmall">
+              Built for instructional designers and faculty who manage Canvas
+              question banks.
+            </p>
 
             <ul className="checkList">
               <Check>Free QTI preview in a clean UI</Check>
@@ -163,15 +189,17 @@ export default function PricingPage() {
             </ul>
 
             <div className="ctaStack">
-              <Link className="btn btnPrimary full" href="/login?next=/app&billing=monthly">
-                Start monthly
-              </Link>
-              <Link className="btn btnOutline full" href="/login?next=/app&billing=yearly">
+              <Link className="btn btnPrimary full" href="/login?next=/app&billing=yearly">
                 Start yearly
+              </Link>
+              <Link className="btn btnOutline full" href="/login?next=/app&billing=monthly">
+                Start monthly
               </Link>
             </div>
 
-            <div className="fine">Preview and formatted import stay local. Smart import uses AI and is metered.</div>
+            <div className="fine">
+              Preview and formatted import stay local. Smart import uses AI and is metered.
+            </div>
           </aside>
         </div>
 
@@ -405,10 +433,22 @@ const css = `
     opacity:0.72;
     font-weight:900;
   }
+  .subLine{
+    margin-top:6px;
+    font-size:12px;
+    opacity:0.78;
+    font-weight:900;
+  }
   .orLine{
     margin-top:6px;
     font-size:12px;
     opacity:0.72;
+    font-weight:900;
+  }
+  .altLine{
+    margin-top:6px;
+    font-size:12px;
+    opacity:0.66;
     font-weight:900;
   }
 

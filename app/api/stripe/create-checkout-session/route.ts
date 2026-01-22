@@ -23,9 +23,10 @@ export async function POST(req: Request) {
   const body = await req.json().catch(() => ({} as any));
   const access_token = body?.access_token as string | undefined;
 
-  const billingRaw = String(body?.billing ?? body?.plan ?? body?.interval ?? "monthly")
+  const billingRaw = String(body?.billing ?? body?.plan ?? body?.interval ?? "yearly")
     .trim()
     .toLowerCase();
+
   const isYearly = ["yearly", "annual", "annually", "year"].includes(billingRaw);
 
   if (!access_token) {
