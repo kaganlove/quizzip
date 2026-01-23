@@ -898,6 +898,15 @@ export default function Page() {
           box-shadow: 0 0 0 4px rgba(168, 85, 247, 0.12);
         }
 
+        /* Only change: make images inside rendered QTI HTML responsive */
+        .qtiPrompt img,
+        .qtiChoiceHtml img {
+          max-width: 100%;
+          height: auto;
+          display: block;
+          margin: 8px auto;
+        }
+
         @media (max-width: 820px) {
           .accountEmail {
             display: none;
@@ -1333,7 +1342,10 @@ export default function Page() {
                   <div className="small">{q.type}</div>
                   <div style={{ fontSize: 18, fontWeight: 950, marginTop: 6 }}>{qi + 1}.</div>
                   <div style={{ marginTop: 8 }}>
-                    <span dangerouslySetInnerHTML={{ __html: sanitizeHtml(q.promptHtml || "(no prompt)") }} />
+                    <div
+                      className="qtiPrompt"
+                      dangerouslySetInnerHTML={{ __html: sanitizeHtml(q.promptHtml || "(no prompt)") }}
+                    />
                   </div>
 
                   {q.choices.length > 0 && (
@@ -1343,7 +1355,10 @@ export default function Page() {
                         return (
                           <div key={c.id} className={"choice " + (isCorrectChoice ? "correct" : "")}>
                             <div className="tag">{String.fromCharCode(65 + ci)}</div>
-                            <div dangerouslySetInnerHTML={{ __html: sanitizeHtml(c.html || "(blank choice)") }} />
+                            <div
+                              className="qtiChoiceHtml"
+                              dangerouslySetInnerHTML={{ __html: sanitizeHtml(c.html || "(blank choice)") }}
+                            />
                           </div>
                         );
                       })}

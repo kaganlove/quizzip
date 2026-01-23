@@ -379,7 +379,7 @@ function stripLeadingChoiceLabelingHtml(input: string): string {
   if (!s) return "";
 
   // Strip checkbox markers first
-  const noBox = s.replace(/^\s*\[\s*\*?\s*\]\s+/i, "");
+  const noBox = s.replace(/^\s*\[\s*[\*xX]?\s*\]\s+/i, "");
   const s2 = noBox.trimStart();
 
   const htmlFirstTag = s2.replace(/^\s*(<[^>]+>\s*)(\(?\s*[A-D]\s*[\.)\:\-]\s+)/i, "$1");
