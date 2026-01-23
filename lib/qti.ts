@@ -90,115 +90,74 @@ function cleanBundleLabel(path: string): string {
 
 function findManifestPath(zip: JSZip): string | null {
   if (zip.file("imsmanifest.xml")) return "imsmanifest.xml";
-
-  const hit = Object.keys(zip.files).find((p) => {
-    const lower = p.toLowerCase();
-    return !zip.files[p].dir && (lower === "imsmanifest.xml" || lower.endsWith("/imsmanifest.xml"));
-  });
-
-  return hit ?? null;
+  const keys = Object.keys(zip.files);
+  for (const k of keys) {
+    if (k.toLowerCase().endsWith("imsmanifest.xml")) return k;
+  }
+  return null;
 }
 
-function normalizeHrefForZip(raw: string): string {
-  let s = (raw ?? "").trim();
-  s = s.split("#")[0].split("?")[0];
-  s = s.replace(/\\/g, "/");
-  try {
-    s = decodeURIComponent(s);
-  } catch {}
-  if (s.startsWith("$IMS-CC-FILEBASE$/")) s = s.slice("$IMS-CC-FILEBASE$/".length);
-  s = s.replace(/^\.\//, "");
-  s = s.replace(/^\//, "");
-  return s;
+function getManifestResourceQtiPaths(manifestXml: string): string[] {
+  const doc = parseXml(manifestXml);
+  const resources = Array.from(doc.getElementsByTagName("resource"));
+
+  const out: string[] = [];
+
+  for (const r of resources) {
+    const type = (r.getAttribute("type") ?? "").toLowerCase();
+
+    const looksLikeQti =
+      type.includes("imsqti") ||
+      type.includes("qti") ||
+      type.includes("assessment") ||
+      type.includes("ims_qti");
+
+    if (!looksLikeQti) continue;
+
+    const files = Array.from(r.getElementsByTagName("file"))
+      .map((f) => f.getAttribute("href") ?? "")
+      .filter(Boolean);
+
+    const pick = files.find((p) => p.toLowerCase().endsWith(".xml"));
+    if (pick) out.push(pick);
+  }
+
+  return Array.from(new Set(out));
 }
 
-function looksLikeQtiXml(xmlText: string): boolean {
-  const t = xmlText.toLowerCase();
-  if (t.includes("<questestinterop")) return true;
-  if (t.includes("<assessment") && t.includes("<item")) return true;
-  if (t.includes("imsqti")) return true;
-  return false;
-}
-
-async function parseSinglePackageZip(zip: JSZip, qtiPathPrefix: string | null, label: string | null): Promise<ParseResult> {
+async function parseSinglePackageZip(
+  zip: JSZip,
+  bundlePath: string | null,
+  bundleLabel: string | null
+): Promise<ParseResult> {
   const warnings: string[] = [];
-
   const manifestPath = findManifestPath(zip);
   if (!manifestPath) {
-    throw new Error("imsmanifest.xml not found.");
+    throw new Error("imsmanifest.xml not found in package.");
   }
 
   const manifestText = await zip.file(manifestPath)!.async("text");
-  const manifestDoc = parseXml(manifestText);
+  const qtiPaths = getManifestResourceQtiPaths(manifestText);
 
-  const resources = Array.from(manifestDoc.getElementsByTagName("resource"));
-
-  const qtiResources = resources.filter((r) => {
-    const type = (r.getAttribute("type") ?? "").toLowerCase();
-    return type.includes("qti");
-  });
-
-  const assessments: Assessment[] = [];
-
-  const pushAssessment = (assessment: Assessment) => {
-    if (label) {
-      assessment.title = `${label} | ${assessment.title}`;
-      assessment.id = `${label}:${assessment.id}`;
-    }
-    assessments.push(assessment);
-  };
-
-  if (qtiResources.length > 0) {
-    for (const res of qtiResources) {
-      const files = Array.from(res.getElementsByTagName("file"));
-
-      for (const f of files) {
-        const hrefRaw = f.getAttribute("href") ?? "";
-        const href = normalizeHrefForZip(hrefRaw);
-        if (!href) continue;
-        if (!href.toLowerCase().endsWith(".xml")) continue;
-
-        const qtiFile = zip.file(href);
-        if (!qtiFile) {
-          warnings.push((label ? `${label}: ` : "") + "Manifest referenced a file that was not found: " + href);
-          continue;
-        }
-
-        const qtiText = await qtiFile.async("text");
-        if (!looksLikeQtiXml(qtiText)) continue;
-
-        const idFromPath = href.split("/")[0] || href;
-        const qtiPath = qtiPathPrefix ? `${qtiPathPrefix}::${href}` : href;
-
-        try {
-          const assessment = parseQtiAssessment(qtiText, idFromPath, qtiPath);
-          pushAssessment(assessment);
-        } catch (e: any) {
-          warnings.push((label ? `${label}: ` : "") + "Could not parse assessment " + href + ": " + (e?.message ?? String(e)));
-        }
-      }
-    }
+  if (qtiPaths.length === 0) {
+    throw new Error("No QTI resources found in manifest.");
   }
 
-  if (assessments.length === 0) {
-    const xmlPaths = Object.keys(zip.files).filter((p) => {
-      const lower = p.toLowerCase();
-      return !zip.files[p].dir && lower.endsWith(".xml") && !lower.endsWith("imsmanifest.xml");
-    });
+  const assessments: Assessment[] = [];
+  for (const p of qtiPaths) {
+    const f = zip.file(p);
+    if (!f) {
+      warnings.push((bundleLabel ? `${bundleLabel}: ` : "") + "QTI file referenced in manifest but not found: " + p);
+      continue;
+    }
 
-    for (const p of xmlPaths) {
-      try {
-        const xmlText = await zip.file(p)!.async("text");
-        if (!looksLikeQtiXml(xmlText)) continue;
-
-        const idFromPath = p.split("/")[0] || p;
-        const qtiPath = qtiPathPrefix ? `${qtiPathPrefix}::${p}` : p;
-
-        const assessment = parseQtiAssessment(xmlText, idFromPath, qtiPath);
-        pushAssessment(assessment);
-      } catch (e: any) {
-        warnings.push((label ? `${label}: ` : "") + "Could not parse xml " + p + ": " + (e?.message ?? String(e)));
-      }
+    try {
+      const xml = await f.async("text");
+      const idFromPath = (bundleLabel ? `${bundleLabel} :: ` : "") + p;
+      const qtiPath = bundlePath ? `${bundlePath}::${p}` : p;
+      assessments.push(parseQtiAssessment(xml, idFromPath, qtiPath));
+    } catch (e: any) {
+      warnings.push((bundleLabel ? `${bundleLabel}: ` : "") + "Could not parse xml " + p + ": " + (e?.message ?? String(e)));
     }
   }
 
@@ -405,6 +364,33 @@ async function rewriteHtmlWithZipResources(
   return { html: root.innerHTML, warnings };
 }
 
+// --- Added: label cleanup helpers (surgical) ---
+function stripLeadingQuestionNumberingHtml(input: string): string {
+  const s = (input ?? "").trimStart();
+  if (!s) return "";
+
+  // If HTML begins with a tag, remove numbering immediately after that tag.
+  // Examples: <p>11) ... , <div>11. ...
+  const htmlFirstTag = s.replace(/^\s*(<[^>]+>\s*)(\(?\s*\d+\s*[\.)\:\-]\s+)/i, "$1");
+  if (htmlFirstTag !== s) return htmlFirstTag;
+
+  // Plain text fallback
+  return s.replace(/^\s*\(?\s*\d+\s*[\.)\:\-]\s+/i, "");
+}
+
+function stripLeadingChoiceLabelingHtml(input: string): string {
+  const s = (input ?? "").trimStart();
+  if (!s) return "";
+
+  // If HTML begins with a tag, remove A) / B) / C) / D) after it.
+  const htmlFirstTag = s.replace(/^\s*(<[^>]+>\s*)(\(?\s*[A-D]\s*[\.)\:\-]\s+)/i, "$1");
+  if (htmlFirstTag !== s) return htmlFirstTag;
+
+  // Plain text fallback
+  return s.replace(/^\s*\(?\s*[A-D]\s*[\.)\:\-]\s+/i, "");
+}
+// --- End helpers ---
+
 export async function loadAssessmentItems(file: File, qtiPath: string): Promise<LoadItemsResult> {
   const warnings: string[] = [];
 
@@ -451,7 +437,7 @@ export async function loadAssessmentItems(file: File, qtiPath: string): Promise<
 
     let promptHtml = getPromptHtml(it);
     const promptRewritten = await rewriteHtmlWithZipResources(promptHtml, zipToUse, index, blobUrlCache);
-    promptHtml = promptRewritten.html;
+    promptHtml = stripLeadingQuestionNumberingHtml(promptRewritten.html);
     warnings.push(...promptRewritten.warnings);
 
     const rawChoices = getChoices(it);
@@ -459,7 +445,7 @@ export async function loadAssessmentItems(file: File, qtiPath: string): Promise<
     for (const c of rawChoices) {
       const rewritten = await rewriteHtmlWithZipResources(c.html, zipToUse, index, blobUrlCache);
       warnings.push(...rewritten.warnings);
-      choices.push({ id: c.id, html: rewritten.html });
+      choices.push({ id: c.id, html: stripLeadingChoiceLabelingHtml(rewritten.html) });
     }
 
     const correctChoiceIds = getCorrectChoiceIds(it);

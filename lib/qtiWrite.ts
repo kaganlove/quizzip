@@ -50,19 +50,31 @@ function stripLeadingQuestionNumbering(input: string) {
   const s = (input ?? "").trimStart();
   if (!s) return "";
 
-  // Case 1: HTML wrapped in a starting <p>...</p>
-  // Example: <p>10. What is ...</p>
-  // Keep the <p> tag, remove only the leading numbering token.
   const htmlP = s.replace(/^\s*(<p[^>]*>\s*)(\(?\s*\d+\s*[\.)\:\-]\s+)/i, "$1");
   if (htmlP !== s) return htmlP;
 
-  // Case 2: Starts with numbering in plain text
-  // Examples: 10. ... , 10) ... , (10) ... , 10: ... , 10 - ...
   return s.replace(/^\s*\(?\s*\d+\s*[\.)\:\-]\s+/i, "");
 }
 
+// --- Added: choice label cleanup helper (surgical) ---
+function stripLeadingChoiceLabeling(input: string) {
+  const s = (input ?? "").trimStart();
+  if (!s) return "";
+
+  // If HTML begins with a tag, remove A) / B) / C) / D) after it.
+  const htmlFirstTag = s.replace(/^\s*(<[^>]+>\s*)(\(?\s*[A-D]\s*[\.)\:\-]\s+)/i, "$1");
+  if (htmlFirstTag !== s) return htmlFirstTag;
+
+  // Plain text fallback
+  return s.replace(/^\s*\(?\s*[A-D]\s*[\.)\:\-]\s+/i, "");
+}
+
+function normalizeChoiceToHtml(choiceText: string) {
+  return stripLeadingChoiceLabeling(choiceText ?? "");
+}
+// --- End helper ---
+
 function normalizePromptToHtml(promptText: string) {
-  // Keep HTML if it exists; we still normalize by stripping leading question numbering.
   return stripLeadingQuestionNumbering(promptText ?? "");
 }
 
@@ -127,8 +139,6 @@ function buildAssessmentXml(args: {
 }) {
   const { title, assessmentIdent, sectionIdent, items } = args;
 
-  // Pad numeric prefix so Canvas lex sorting looks like numeric order
-  // ITEM0001_..., ITEM0010_..., etc.
   const itemXml = items
     .map((it, idx) => {
       const n = String(idx + 1).padStart(4, "0");
@@ -203,7 +213,6 @@ function buildItemXml(args: { item: QtiItem; ident: string }) {
 </item>`;
   }
 
-  // Choice based types
   const choices = (item as any).choices as QtiChoice[] | undefined;
   const choiceList = (choices ?? []).map((c, i) => ({ ...c, ident: `CHOICE_${i + 1}` }));
 
@@ -220,7 +229,7 @@ function buildItemXml(args: { item: QtiItem; ident: string }) {
         (c) => `
     <response_label ident="${xmlEscape(c.ident)}">
       <material>
-        ${matTextHtml(c.text ?? "")}
+        ${matTextHtml(normalizeChoiceToHtml(c.text ?? ""))}
       </material>
     </response_label>`
       )
@@ -228,8 +237,6 @@ function buildItemXml(args: { item: QtiItem; ident: string }) {
   </render_choice>
 </response_lid>`;
 
-  // Very lightweight scoring: correct if matches expected set for multiple, or matches single correct for single/true_false
-  // Canvas tends to accept this minimal logic well enough for import.
   const condition =
     item.type === "multiple_choice_multiple"
       ? `

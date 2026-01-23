@@ -21,7 +21,8 @@ function normLines(raw: string) {
 }
 
 function stripNumPrefix(line: string) {
-  return line.replace(/^\s*\d+\.\s+/, "").trim();
+  // Accept: 12. , 12) , (12) , 12: , 12 -
+  return line.replace(/^\s*\(?\s*\d+\s*[\.\)\:\-]\s+/, "").trim();
 }
 
 function isBlank(line: string) {
@@ -29,7 +30,8 @@ function isBlank(line: string) {
 }
 
 function looksLikeQuestionStart(line: string) {
-  return /^\s*\d+\.\s+/.test(line);
+  // Accept: 12. , 12) , (12) , 12: , 12 -
+  return /^\s*\(?\s*\d+\s*[\.\)\:\-]\s+/.test(line);
 }
 
 function splitIntoQuestionBlocks(raw: string) {
@@ -49,7 +51,6 @@ function splitIntoQuestionBlocks(raw: string) {
     const end = si + 1 < starts.length ? starts[si + 1] : lines.length;
     const slice = lines.slice(start, end);
 
-    // Trim leading/trailing blank lines inside the block
     while (slice.length && isBlank(slice[0])) slice.shift();
     while (slice.length && isBlank(slice[slice.length - 1])) slice.pop();
 
@@ -59,9 +60,6 @@ function splitIntoQuestionBlocks(raw: string) {
 }
 
 function parseBracketMulti(lines: string[], promptText: string): ParsedItem | null {
-  // Multiple answers format:
-  // [ ] Option
-  // [*] Option
   const optionRe = /^\s*\[(\*?)\]\s+(.*\S)\s*$/;
 
   const choices: Array<{ text: string; correct?: boolean }> = [];
@@ -86,9 +84,6 @@ function parseBracketMulti(lines: string[], promptText: string): ParsedItem | nu
 }
 
 function parseStarredAlphaChoices(lines: string[], promptText: string): ParsedItem | null {
-  // Multiple choice single and True/False
-  // a) 1
-  // *b) 2
   const re = /^\s*(\*)?\s*([a-z])\)\s+(.*\S)\s*$/i;
 
   const parsed: Array<{ letter: string; text: string; correct: boolean }> = [];
@@ -104,7 +99,6 @@ function parseStarredAlphaChoices(lines: string[], promptText: string): ParsedIt
 
   if (parsed.length < 2) return null;
 
-  // Check if this is True/False specifically
   if (parsed.length === 2) {
     const a = parsed[0].text.toLowerCase();
     const b = parsed[1].text.toLowerCase();
@@ -117,7 +111,6 @@ function parseStarredAlphaChoices(lines: string[], promptText: string): ParsedIt
         { text: "False", correct: parsed.find(p => p.text.toLowerCase() === "false")?.correct ?? false },
       ];
 
-      // If neither is marked, do not guess. Fail so OpenAI can handle.
       if (!choices.some(c => c.correct)) return null;
 
       return {
@@ -128,12 +121,10 @@ function parseStarredAlphaChoices(lines: string[], promptText: string): ParsedIt
     }
   }
 
-  // Multiple choice single
   const choices = parsed
     .sort((x, y) => x.letter.localeCompare(y.letter))
     .map(p => ({ text: p.text, correct: p.correct }));
 
-  // Must have exactly one correct for single choice
   const correctCount = choices.filter(c => c.correct).length;
   if (correctCount !== 1) return null;
 
@@ -145,9 +136,6 @@ function parseStarredAlphaChoices(lines: string[], promptText: string): ParsedIt
 }
 
 function parseShortAnswer(lines: string[], promptText: string): ParsedItem | null {
-  // Short answer format:
-  // * Santa
-  // * Santa Claus
   const re = /^\s*\*\s+(.*\S)\s*$/;
 
   const answers: string[] = [];
@@ -155,7 +143,6 @@ function parseShortAnswer(lines: string[], promptText: string): ParsedItem | nul
     const m = re.exec(line);
     if (!m) continue;
 
-    // Avoid confusing with *c) style by rejecting if it looks like "*a) ..."
     if (/^\s*[a-z]\)\s+/i.test(m[1])) continue;
 
     answers.push(m[1].trim());
@@ -193,19 +180,15 @@ function parseOneBlock(block: string): ParsedItem | null {
   const promptText = stripNumPrefix(first);
   const rest = lines.slice(1).filter(l => !isBlank(l));
 
-  // Essay / file upload markers can appear anywhere in the block
   const ef = parseEssayOrFile(rest, promptText);
   if (ef) return ef;
 
-  // Multiple answers bracket format
   const multi = parseBracketMulti(rest, promptText);
   if (multi) return multi;
 
-  // True/False or single choice
   const mc = parseStarredAlphaChoices(rest, promptText);
   if (mc) return mc;
 
-  // Short answer
   const sa = parseShortAnswer(rest, promptText);
   if (sa) return sa;
 
@@ -214,16 +197,14 @@ function parseOneBlock(block: string): ParsedItem | null {
 
 export function parseStrictQuizText(raw: string): { quiz: ParsedQuiz | null; reason?: string } {
   const blocks = splitIntoQuestionBlocks(raw);
-  if (blocks.length === 0) return { quiz: null, reason: "No numbered questions found." };
+  if (!blocks.length) return { quiz: null, reason: "No question blocks found." };
 
   const items: ParsedItem[] = [];
   for (const b of blocks) {
-    const parsed = parseOneBlock(b);
-    if (!parsed) {
-      return { quiz: null, reason: "At least one question did not match the strict formats." };
-    }
-    items.push(parsed);
+    const it = parseOneBlock(b);
+    if (!it) return { quiz: null, reason: "One or more blocks did not match strict formatting." };
+    items.push(it);
   }
 
-  return { quiz: { items }, reason: undefined };
+  return { quiz: { items } };
 }
