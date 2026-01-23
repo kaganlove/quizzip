@@ -364,17 +364,13 @@ async function rewriteHtmlWithZipResources(
   return { html: root.innerHTML, warnings };
 }
 
-// --- Added: label cleanup helpers (surgical) ---
 function stripLeadingQuestionNumberingHtml(input: string): string {
   const s = (input ?? "").trimStart();
   if (!s) return "";
 
-  // If HTML begins with a tag, remove numbering immediately after that tag.
-  // Examples: <p>11) ... , <div>11. ...
   const htmlFirstTag = s.replace(/^\s*(<[^>]+>\s*)(\(?\s*\d+\s*[\.)\:\-]\s+)/i, "$1");
   if (htmlFirstTag !== s) return htmlFirstTag;
 
-  // Plain text fallback
   return s.replace(/^\s*\(?\s*\d+\s*[\.)\:\-]\s+/i, "");
 }
 
@@ -382,14 +378,69 @@ function stripLeadingChoiceLabelingHtml(input: string): string {
   const s = (input ?? "").trimStart();
   if (!s) return "";
 
-  // If HTML begins with a tag, remove A) / B) / C) / D) after it.
-  const htmlFirstTag = s.replace(/^\s*(<[^>]+>\s*)(\(?\s*[A-D]\s*[\.)\:\-]\s+)/i, "$1");
-  if (htmlFirstTag !== s) return htmlFirstTag;
+  // Strip checkbox markers first
+  const noBox = s.replace(/^\s*\[\s*\*?\s*\]\s+/i, "");
+  const s2 = noBox.trimStart();
 
-  // Plain text fallback
-  return s.replace(/^\s*\(?\s*[A-D]\s*[\.)\:\-]\s+/i, "");
+  const htmlFirstTag = s2.replace(/^\s*(<[^>]+>\s*)(\(?\s*[A-D]\s*[\.)\:\-]\s+)/i, "$1");
+  if (htmlFirstTag !== s2) return htmlFirstTag;
+
+  return s2.replace(/^\s*\(?\s*[A-D]\s*[\.)\:\-]\s+/i, "");
 }
-// --- End helpers ---
+
+function stripQuestionPrefixFromLineText(text: string): string {
+  const t = (text ?? "").trimStart();
+  if (!t) return "";
+  return t.replace(/^question:\s*/i, "");
+}
+
+function removeInlineChoiceBlockFromPromptHtml(inputHtml: string): string {
+  const html = (inputHtml ?? "").trim();
+  if (!html) return "";
+
+  const BR_TOKEN = "__QUIZZIP_BR__";
+
+  // Normalize common line breaks into a token
+  let normalized = html
+    .replace(/<br\s*\/?>/gi, BR_TOKEN)
+    .replace(/<\/p>\s*<p[^>]*>/gi, BR_TOKEN)
+    .replace(/<\/div>\s*<div[^>]*>/gi, BR_TOKEN);
+
+  const parts = normalized.split(BR_TOKEN);
+
+  let removed = 0;
+  const kept: string[] = [];
+
+  for (const part of parts) {
+    const plain = part.replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim();
+
+    // Remove inline choice lines like A) ... B) ... etc
+    if (/^[A-D]\s*[\.)]\s+/i.test(plain)) {
+      removed++;
+      continue;
+    }
+
+    // Remove leading "Question:" label but keep the rest
+    if (/^question:\s*/i.test(plain)) {
+      const remainder = stripQuestionPrefixFromLineText(plain);
+      kept.push(remainder);
+      continue;
+    }
+
+    kept.push(part);
+  }
+
+  // Only apply if it really looks like a duplicated choice block
+  if (removed < 2) return html;
+
+  // Rebuild as simple HTML with breaks
+  const rebuilt = kept
+    .map((x) => (x ?? "").trim())
+    .filter((x) => x.length > 0)
+    .join("<br/>");
+
+  return rebuilt.trim();
+}
 
 export async function loadAssessmentItems(file: File, qtiPath: string): Promise<LoadItemsResult> {
   const warnings: string[] = [];
@@ -437,8 +488,11 @@ export async function loadAssessmentItems(file: File, qtiPath: string): Promise<
 
     let promptHtml = getPromptHtml(it);
     const promptRewritten = await rewriteHtmlWithZipResources(promptHtml, zipToUse, index, blobUrlCache);
-    promptHtml = stripLeadingQuestionNumberingHtml(promptRewritten.html);
     warnings.push(...promptRewritten.warnings);
+
+    // Clean prompt numbering and remove embedded choice lists when present
+    promptHtml = stripLeadingQuestionNumberingHtml(promptRewritten.html);
+    promptHtml = removeInlineChoiceBlockFromPromptHtml(promptHtml);
 
     const rawChoices = getChoices(it);
     const choices: { id: string; html: string }[] = [];
