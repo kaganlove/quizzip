@@ -38,21 +38,6 @@ function stripHtmlToText(html: string) {
     .trim();
 }
 
-// MINIMAL ADD: remove leading choice labels and bracket markers from exported choice text
-function stripChoicePrefix(text: string) {
-  if (!text) return text;
-  let s = text.trim();
-
-  // Remove leading bracket markers like [*] [x] [ ]
-  s = s.replace(/^\[(?:\*|x|X| )\]\s*/, "");
-
-  // Remove leading labels like A) a) A. a. (A) 1) 1.
-  s = s.replace(/^(?:\(?[A-Da-d]\)?[)\.:]\s+)/, "");
-  s = s.replace(/^(?:\d+[)\.:]\s+)/, "");
-
-  return s.trim();
-}
-
 function normalizeNewlines(s: string) {
   return s.replaceAll("\r\n", "\n").replaceAll("\r", "\n");
 }
@@ -95,6 +80,26 @@ function extractAndReplaceDataUris(html: string, images: { path: string; bytes: 
   return out;
 }
 
+/**
+ * Minimal fix:
+ * Remove a leading "12)" or "12." style question number from the prompt,
+ * but only when it is followed by a letter (so we do not accidentally strip years like "2024.").
+ */
+function stripLeadingQuestionNumberHtml(html: string) {
+  if (!html) return html;
+
+  // Optional leading <p ...> then a small number, then ) or ., then whitespace, then a letter
+  const re = /^(\s*(?:<p[^>]*>\s*)?)(\d{1,3})\s*[\)\.]\s*(?=[A-Za-z])/i;
+  return html.replace(re, "$1");
+}
+
+function stripLeadingQuestionNumberText(text: string) {
+  if (!text) return text;
+
+  const re = /^(\s*)(\d{1,3})\s*[\)\.]\s*(?=[A-Za-z])/i;
+  return text.replace(re, "$1");
+}
+
 function canvasQuestionType(type: string) {
   switch (type) {
     case "multiple_choice":
@@ -126,14 +131,13 @@ function buildItemMetadataXml(type: string) {
   `.trim();
 }
 
-// MINIMAL CHANGE: stripChoicePrefix applied here so Canvas does not show A) inside the choice text
 function buildRenderChoiceXml(choices: QtiWriteChoice[]) {
   const labels = choices
     .map(
       (c) => `
         <response_label ident="${escapeXml(c.id)}">
           <material>
-            <mattext texttype="text/html">${escapeXml(stripChoicePrefix(c.text))}</mattext>
+            <mattext texttype="text/html">${escapeXml(c.text)}</mattext>
           </material>
         </response_label>
       `.trim()
@@ -151,8 +155,12 @@ function buildItemXml(item: QtiWriteItem, index: number) {
   const ident = escapeXml(item.id || `q${index + 1}`);
   const title = escapeXml(`Question ${index + 1}`);
 
-  const promptHtml = item.promptHtml || "";
-  const promptText = stripHtmlToText(promptHtml);
+  const promptHtmlRaw = item.promptHtml || "";
+  const promptTextRaw = stripHtmlToText(promptHtmlRaw);
+
+  // Minimal change: remove leading "N)" or "N." when it looks like an injected question number
+  const promptHtml = stripLeadingQuestionNumberHtml(promptHtmlRaw);
+  const promptText = stripLeadingQuestionNumberText(promptTextRaw);
 
   const type = item.type || (item.choices?.length ? "multiple_choice" : "essay");
   const qt = canvasQuestionType(type);
@@ -174,58 +182,26 @@ function buildItemXml(item: QtiWriteItem, index: number) {
       </presentation>
     `.trim();
 
-    // MINIMAL CHANGE: add SCORE setvar so Canvas can detect correct answers
-    // Also: for multiple answers, require all correct selected and all incorrect not selected
-    let respconditions = "";
-
-    if (qt === "multiple_answers_question") {
-      if (correctIds.length) {
-        const correctSet = new Set(correctIds);
-        const incorrectIds = choices.map((c) => c.id).filter((id) => !correctSet.has(id));
-
-        const mustHave = correctIds
-          .map(
-            (cid) => `
+    const respconditions =
+      qt === "multiple_answers_question"
+        ? correctIds
+            .map(
+              (cid) => `
+          <respcondition continue="Yes">
+            <conditionvar>
               <varequal respident="${responseIdent}">${escapeXml(cid)}</varequal>
-            `.trim()
-          )
-          .join("\n");
-
-        const mustNotHave = incorrectIds
-          .map(
-            (id) => `
-              <not>
-                <varequal respident="${responseIdent}">${escapeXml(id)}</varequal>
-              </not>
-            `.trim()
-          )
-          .join("\n");
-
-        respconditions = `
-          <respcondition continue="No">
-            <conditionvar>
-              <and>
-                ${mustHave}
-                ${mustNotHave}
-              </and>
             </conditionvar>
-            <setvar varname="SCORE" action="Set">100</setvar>
           </respcondition>
-        `.trim();
-      }
-    } else {
-      const firstCorrect = correctIds?.[0];
-      if (firstCorrect) {
-        respconditions = `
-          <respcondition continue="No">
-            <conditionvar>
-              <varequal respident="${responseIdent}">${escapeXml(firstCorrect)}</varequal>
-            </conditionvar>
-            <setvar varname="SCORE" action="Set">100</setvar>
-          </respcondition>
-        `.trim();
-      }
-    }
+        `.trim()
+            )
+            .join("\n")
+        : `
+        <respcondition continue="No">
+          <conditionvar>
+            <varequal respident="${responseIdent}">${escapeXml(correctIds?.[0] || "")}</varequal>
+          </conditionvar>
+        </respcondition>
+      `.trim();
 
     const resprocessing = `
       <resprocessing>
