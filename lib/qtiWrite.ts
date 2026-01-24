@@ -38,6 +38,21 @@ function stripHtmlToText(html: string) {
     .trim();
 }
 
+// MINIMAL ADD: remove leading choice labels and bracket markers from exported choice text
+function stripChoicePrefix(text: string) {
+  if (!text) return text;
+  let s = text.trim();
+
+  // Remove leading bracket markers like [*] [x] [ ]
+  s = s.replace(/^\[(?:\*|x|X| )\]\s*/, "");
+
+  // Remove leading labels like A) a) A. a. (A) 1) 1.
+  s = s.replace(/^(?:\(?[A-Da-d]\)?[)\.:]\s+)/, "");
+  s = s.replace(/^(?:\d+[)\.:]\s+)/, "");
+
+  return s.trim();
+}
+
 function normalizeNewlines(s: string) {
   return s.replaceAll("\r\n", "\n").replaceAll("\r", "\n");
 }
@@ -111,13 +126,14 @@ function buildItemMetadataXml(type: string) {
   `.trim();
 }
 
+// MINIMAL CHANGE: stripChoicePrefix applied here so Canvas does not show A) inside the choice text
 function buildRenderChoiceXml(choices: QtiWriteChoice[]) {
   const labels = choices
     .map(
       (c) => `
         <response_label ident="${escapeXml(c.id)}">
           <material>
-            <mattext texttype="text/html">${escapeXml(c.text)}</mattext>
+            <mattext texttype="text/html">${escapeXml(stripChoicePrefix(c.text))}</mattext>
           </material>
         </response_label>
       `.trim()
@@ -158,26 +174,58 @@ function buildItemXml(item: QtiWriteItem, index: number) {
       </presentation>
     `.trim();
 
-    const respconditions =
-      qt === "multiple_answers_question"
-        ? correctIds
-            .map(
-              (cid) => `
-          <respcondition continue="Yes">
-            <conditionvar>
+    // MINIMAL CHANGE: add SCORE setvar so Canvas can detect correct answers
+    // Also: for multiple answers, require all correct selected and all incorrect not selected
+    let respconditions = "";
+
+    if (qt === "multiple_answers_question") {
+      if (correctIds.length) {
+        const correctSet = new Set(correctIds);
+        const incorrectIds = choices.map((c) => c.id).filter((id) => !correctSet.has(id));
+
+        const mustHave = correctIds
+          .map(
+            (cid) => `
               <varequal respident="${responseIdent}">${escapeXml(cid)}</varequal>
+            `.trim()
+          )
+          .join("\n");
+
+        const mustNotHave = incorrectIds
+          .map(
+            (id) => `
+              <not>
+                <varequal respident="${responseIdent}">${escapeXml(id)}</varequal>
+              </not>
+            `.trim()
+          )
+          .join("\n");
+
+        respconditions = `
+          <respcondition continue="No">
+            <conditionvar>
+              <and>
+                ${mustHave}
+                ${mustNotHave}
+              </and>
             </conditionvar>
+            <setvar varname="SCORE" action="Set">100</setvar>
           </respcondition>
-        `.trim()
-            )
-            .join("\n")
-        : `
-        <respcondition continue="No">
-          <conditionvar>
-            <varequal respident="${responseIdent}">${escapeXml(correctIds?.[0] || "")}</varequal>
-          </conditionvar>
-        </respcondition>
-      `.trim();
+        `.trim();
+      }
+    } else {
+      const firstCorrect = correctIds?.[0];
+      if (firstCorrect) {
+        respconditions = `
+          <respcondition continue="No">
+            <conditionvar>
+              <varequal respident="${responseIdent}">${escapeXml(firstCorrect)}</varequal>
+            </conditionvar>
+            <setvar varname="SCORE" action="Set">100</setvar>
+          </respcondition>
+        `.trim();
+      }
+    }
 
     const resprocessing = `
       <resprocessing>
