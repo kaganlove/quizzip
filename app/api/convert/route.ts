@@ -195,7 +195,7 @@ export async function POST(req: Request) {
     }
 
     const title = (final.title || "Canvas Import").toString();
-    const zipBytes = await buildQtiZip(title, items);
+    const zipBytes = await buildQtiZip({title, items});
 
     const inputTokens = (convertUsage.input_tokens ?? 0) + (reviewUsage.input_tokens ?? 0);
     const outputTokens = (convertUsage.output_tokens ?? 0) + (reviewUsage.output_tokens ?? 0);
