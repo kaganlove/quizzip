@@ -81,7 +81,8 @@ export default function SecurityPage() {
         <h2 className="text-lg font-extrabold">Smart import is the exception</h2>
         <p>
           Smart import sends the content you submit to our server route so we can run an AI conversion and generate a Canvas
-          importable QTI zip. This is the only time quiz content needs to leave your machine.
+          importable QTI zip. Smart import uploads only the content you submit for conversion. Preview and formatted import stay in
+          your browser.
         </p>
         <p>If you need a workflow where content never leaves your machine, use preview and formatted import.</p>
       </section>

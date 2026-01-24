@@ -96,8 +96,8 @@ export default function PricingPage() {
               <h2 className="h2">What counts toward the 1,000 questions</h2>
               <p className="pSmall">
                 Only smart import uses AI and counts toward your monthly
-                question allowance. Preview and formatted import do not count
-                toward the meter.
+                question allowance. Preview and formatted import stay in your
+                browser. Smart import uploads only the content you submit for conversion.
               </p>
 
               <div className="twoCol">
@@ -149,7 +149,7 @@ export default function PricingPage() {
                   <p className="pSmall">
                     Best for messy, mixed format content like docs, spreadsheets,
                     and copy paste. Uses AI to normalize and generate a clean
-                    Canvas import zip.
+                    Canvas import zip. Uploads only the content you submit for conversion.
                   </p>
                   <ul className="innerList">
                     <li>Metered up to 1,000 questions per month</li>
@@ -197,7 +197,7 @@ export default function PricingPage() {
             </div>
 
             <div className="fine">
-              Preview and formatted import stay local. Smart import uses AI and is metered.
+              Preview and formatted import stay in your browser. Smart import uploads only the content you submit for conversion and uses AI.
             </div>
           </aside>
         </div>

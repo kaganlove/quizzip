@@ -132,7 +132,8 @@ export default function LandingPage() {
           <div className="previewGrid">
             <div>
               <div className="kicker">What you get</div>
-              <h2 className="h2">A simple quiz pipeline</h2>
+              <h2 className="h2"><strong>Preview, convert, export.</strong>
+</h2>
               <p className="p">Preview first, convert when needed, then export for Canvas or Word.</p>
 
               <div className="previewBullets">
@@ -297,6 +298,12 @@ export default function LandingPage() {
             <summary>Can I cancel anytime</summary>
             <div className="qaBody">Yes. You can manage billing from the app and cancel whenever you want.</div>
           </details>
+
+          <details className="qa">
+  <summary>Can I use it just for viewing</summary>
+  <div className="qaBody">Yes. The free plan offers unlimited quiz viewing.</div>
+</details>
+
         </section>
 
         {/* Shared footer (consistent across pages) */}

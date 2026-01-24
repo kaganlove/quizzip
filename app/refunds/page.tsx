@@ -68,7 +68,7 @@ function LegalShell({
 
 export default function RefundsPage() {
   return (
-    <LegalShell title="Refunds and Cancellation" subtitle="Last updated: update this date when you ship changes.">
+    <LegalShell title="Refunds and Cancellation" subtitle="Last updated: January 23, 2026.">
       <section className="space">
         <h2 className="h2small">Cancel anytime</h2>
         <p>
@@ -89,8 +89,11 @@ export default function RefundsPage() {
       <section className="space">
         <h2 className="h2small">Usage limits</h2>
         <p>
-          Smart import may be metered by question count based on your plan. If you hit a limit, you can wait for the next billing
-          cycle or contact support if you need help.
+          Smart import may be metered by question count based on your plan. Smart import uploads only the content you submit for
+          conversion. Preview and formatted import stay in your browser.
+        </p>
+        <p>
+          If you hit a limit, you can wait for the next billing cycle or contact support if you need help.
         </p>
       </section>
 

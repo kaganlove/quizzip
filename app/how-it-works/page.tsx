@@ -44,7 +44,7 @@ export default function HowItWorksPage() {
 
         <section className="card">
           <h1 className="h1">How it works</h1>
-          <p className="pSmall">A simple quiz pipeline: preview, convert, export.</p>
+          <p className="pSmall">A simple workflow: preview, convert, export.</p>
 
           <div className="stepGrid">
             <div className="miniCard">
@@ -62,7 +62,8 @@ export default function HowItWorksPage() {
             <div className="miniCard">
               <div className="miniTitle">Convert</div>
               <div className="miniBody">
-                Upload or paste your question bank and generate a Canvas importable QTI zip when you are ready.
+                Upload or paste your question bank and generate a Canvas importable QTI zip when you are ready. Preview and
+                formatted import stay in your browser. Smart import uploads only the content you submit for conversion.
               </div>
               <ul className="miniList">
                 <li>Formatted import for template based content</li>

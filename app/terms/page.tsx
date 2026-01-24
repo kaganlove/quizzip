@@ -68,7 +68,7 @@ function LegalShell({
 
 export default function TermsPage() {
   return (
-    <LegalShell title="Terms of Service" subtitle="Last updated: update this date when you ship changes.">
+    <LegalShell title="Terms of Service" subtitle="Last updated: January 23, 2026.">
       <section className="space">
         <h2 className="h2small">Agreement</h2>
         <p>By accessing or using Quizzip, you agree to these terms. If you do not agree, do not use the service.</p>
@@ -79,7 +79,8 @@ export default function TermsPage() {
         <p>
           Quizzip helps you preview Canvas Classic QTI exports in a clean browser view and generate outputs such as Word exports
           and Canvas importable QTI zips. Preview is designed to run locally in your browser. Smart import sends content to our
-          server route to run an AI conversion.
+          server route to run an AI conversion. Smart import uploads only the content you submit for conversion. Preview and
+          formatted import stay in your browser.
         </p>
       </section>
 

@@ -68,13 +68,14 @@ function LegalShell({
 
 export default function PrivacyPage() {
   return (
-    <LegalShell title="Privacy Policy" subtitle="Last updated: update this date when you ship changes.">
+    <LegalShell title="Privacy Policy" subtitle="Last updated: January 23, 2026.">
       <section className="space">
         <h2 className="h2small">Summary</h2>
         <p>
           Quizzip is designed to keep your quiz files on your machine whenever possible. QTI preview runs in your browser and does
           not upload your QTI zip to our servers. Smart import is the only feature that sends content to our server route so we can
-          run an AI conversion and produce a Canvas import zip for you.
+          run an AI conversion and produce a Canvas import zip for you. Smart import uploads only the content you submit for
+          conversion. Preview and formatted import stay in your browser.
         </p>
       </section>
 
@@ -113,7 +114,8 @@ export default function PrivacyPage() {
         <p>
           When you use Smart import, Quizzip sends the content required to perform conversion to our server route. That route calls
           an AI provider to normalize your content into a structured internal format and then generates a Canvas import QTI zip for
-          download.
+          download. Smart import uploads only the content you submit for conversion. Preview and formatted import stay in your
+          browser.
         </p>
         <p>
           We do not sell your content. We do not use it to train models. We treat it as customer provided input for the purpose of
@@ -135,8 +137,9 @@ export default function PrivacyPage() {
         <h2 className="h2small">Data retention</h2>
         <p>
           Account and subscription records are retained while your account is active and as needed for legal and billing purposes.
-          Smart import input is not intended to be stored long term. Platform logs may retain limited data for security and
-          reliability.
+          Smart import input is processed to generate your requested output. We do not use Smart import input for training. Any
+          temporary handling is limited to what is needed to complete the conversion and operate the service. Platform logs may
+          retain limited data for security and reliability.
         </p>
       </section>
 
