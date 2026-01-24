@@ -11,6 +11,8 @@ export type ParsedItem = {
   correctText?: string;
 };
 
+type ParsedChoice = { text: string; correct?: boolean };
+
 export type ParsedQuiz = {
   title?: string;
   items: ParsedItem[];
