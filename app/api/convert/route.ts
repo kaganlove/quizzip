@@ -173,6 +173,29 @@ export async function POST(req: Request) {
       reviewUsage = review.usage ?? reviewUsage;
     }
 
+    // Do not guess correct answers.
+// Keep correct answers only when they were explicitly marked in the original strict parse.
+const explicitCorrectFlags = strict.quiz?.items?.map((it: any) =>
+  Array.isArray(it?.choices) ? it.choices.some((c: any) => Boolean(c?.correct)) : false
+);
+
+const finalItems: any[] = Array.isArray(final?.items) ? final.items : Array.isArray(final?.questions) ? final.questions : [];
+
+for (let i = 0; i < finalItems.length; i++) {
+  const keep = explicitCorrectFlags ? Boolean(explicitCorrectFlags[i]) : false;
+
+  if (!keep) {
+    finalItems[i].correctChoiceIds = [];
+    if (Array.isArray(finalItems[i].choices)) {
+      finalItems[i].choices = finalItems[i].choices.map((c: any) => ({ ...c, correct: false }));
+    }
+  }
+}
+
+if (Array.isArray(final?.items)) final.items = finalItems;
+if (Array.isArray(final?.questions)) final.questions = finalItems;
+
+
     // Apply client chosen title last so it always wins
     if (clientTitle) {
       final.title = clientTitle;

@@ -60,97 +60,74 @@ function splitIntoQuestionBlocks(raw: string) {
 }
 
 function parseBracketMulti(lines: string[], promptText: string): ParsedItem | null {
+  // Bracketed choices:
+  // [ ] Option
+  // [*] Option
   const optionRe = /^\s*\[(\*?)\]\s+(.*\S)\s*$/;
 
-  const choices: Array<{ text: string; correct?: boolean }> = [];
-  let found = false;
-
-  for (const line of lines) {
-    const m = optionRe.exec(line);
-    if (!m) continue;
-    found = true;
-    const correct = m[1] === "*";
-    const text = m[2].trim();
-    choices.push({ text, correct });
+  const choices: ParsedChoice[] = [];
+  for (const ln of lines) {
+    const m = ln.match(optionRe);
+    if (!m) return null;
+    choices.push({ text: m[2], correct: Boolean(m[1]) });
   }
 
-  if (!found || choices.length < 2) return null;
+  const correctCount = choices.filter((c) => c.correct).length;
 
-  return {
-    type: "multiple_choice_multiple",
-    promptText,
-    choices,
-  };
+  // If none are marked, keep the question but leave correct blank
+  if (correctCount === 0) {
+    return { type: "multiple_choice_single", promptText, choices };
+  }
+
+  // If more than one marked, treat as multiple answers
+  if (correctCount > 1) {
+    return { type: "multiple_choice_multiple", promptText, choices };
+  }
+
+  // Exactly one marked, treat as single answer multiple choice
+  return { type: "multiple_choice_single", promptText, choices };
 }
 
 function parseStarredAlphaChoices(lines: string[], promptText: string): ParsedItem | null {
+  // Multiple choice single and True or False
+  // a) 1
+  // *b) 2
   const re = /^\s*(\*)?\s*([a-z])\)\s+(.*\S)\s*$/i;
 
-  const parsed: Array<{ letter: string; text: string; correct: boolean }> = [];
-  for (const line of lines) {
-    const m = re.exec(line);
-    if (!m) continue;
-    parsed.push({
-      letter: m[2].toLowerCase(),
-      text: m[3].trim(),
-      correct: Boolean(m[1]),
-    });
-  }
-
-  if (parsed.length < 2) return null;
-
-  // True/False detection (allow even if no correct is marked)
-  if (parsed.length === 2) {
-    const a = parsed[0].text.toLowerCase();
-    const b = parsed[1].text.toLowerCase();
-    const isTF =
-      (a === "true" && b === "false") || (a === "false" && b === "true");
-
-    if (isTF) {
-      const choices = [
-        { text: "True", correct: parsed.find(p => p.text.toLowerCase() === "true")?.correct ?? false },
-        { text: "False", correct: parsed.find(p => p.text.toLowerCase() === "false")?.correct ?? false },
-      ];
-
-      return {
-        type: "true_false",
-        promptText,
-        choices,
-      };
+  const choices: ParsedChoice[] = [];
+  for (const ln of lines) {
+    // True or False special case
+    const tf = ln.trim();
+    if (/^\*?\s*(true|false)\s*$/i.test(tf)) {
+      const isCorrect = /^\*/.test(tf);
+      const text = tf.replace(/^\*\s*/, "");
+      choices.push({ text, correct: isCorrect });
+      continue;
     }
+
+    const m = ln.match(re);
+    if (!m) return null;
+    choices.push({ text: m[3], correct: Boolean(m[1]) });
   }
 
-  const choices = parsed
-    .sort((x, y) => x.letter.localeCompare(y.letter))
-    .map(p => ({ text: p.text, correct: p.correct }));
+  const correctCount = choices.filter((c) => c.correct).length;
 
-  const correctCount = choices.filter(c => c.correct).length;
+  // If none are marked, keep the question but leave correct blank
+  if (correctCount === 0) {
+    const isTf = choices.length === 2 && choices.every((c) => /^(true|false)$/i.test(c.text.trim()));
+    return { type: isTf ? "true_false" : "multiple_choice_single", promptText, choices };
+  }
 
-  // If multiple correct are marked, treat it as multi-answer.
+  // If more than one is marked, treat as multiple answers
   if (correctCount > 1) {
-    return {
-      type: "multiple_choice_multiple",
-      promptText,
-      choices,
-    };
+    return { type: "multiple_choice_multiple", promptText, choices };
   }
 
-  // If exactly one correct is marked, keep single-choice.
-  if (correctCount === 1) {
-    return {
-      type: "multiple_choice_single",
-      promptText,
-      choices,
-    };
-  }
-
-  // If none are marked, still keep the question (no guessing).
-  return {
-    type: "multiple_choice_single",
-    promptText,
-    choices: choices.map(c => ({ text: c.text, correct: false })),
-  };
+  // Exactly one marked, treat as single answer multiple choice or TF
+  const isTf = choices.length === 2 && choices.every((c) => /^(true|false)$/i.test(c.text.trim()));
+  return { type: isTf ? "true_false" : "multiple_choice_single", promptText, choices };
 }
+
 
 function parseShortAnswer(lines: string[], promptText: string): ParsedItem | null {
   const re = /^\s*\*\s+(.*\S)\s*$/;
