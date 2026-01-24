@@ -99,6 +99,7 @@ function parseStarredAlphaChoices(lines: string[], promptText: string): ParsedIt
 
   if (parsed.length < 2) return null;
 
+  // True/False detection (allow even if no correct is marked)
   if (parsed.length === 2) {
     const a = parsed[0].text.toLowerCase();
     const b = parsed[1].text.toLowerCase();
@@ -110,8 +111,6 @@ function parseStarredAlphaChoices(lines: string[], promptText: string): ParsedIt
         { text: "True", correct: parsed.find(p => p.text.toLowerCase() === "true")?.correct ?? false },
         { text: "False", correct: parsed.find(p => p.text.toLowerCase() === "false")?.correct ?? false },
       ];
-
-      if (!choices.some(c => c.correct)) return null;
 
       return {
         type: "true_false",
@@ -126,12 +125,30 @@ function parseStarredAlphaChoices(lines: string[], promptText: string): ParsedIt
     .map(p => ({ text: p.text, correct: p.correct }));
 
   const correctCount = choices.filter(c => c.correct).length;
-  if (correctCount !== 1) return null;
 
+  // If multiple correct are marked, treat it as multi-answer.
+  if (correctCount > 1) {
+    return {
+      type: "multiple_choice_multiple",
+      promptText,
+      choices,
+    };
+  }
+
+  // If exactly one correct is marked, keep single-choice.
+  if (correctCount === 1) {
+    return {
+      type: "multiple_choice_single",
+      promptText,
+      choices,
+    };
+  }
+
+  // If none are marked, still keep the question (no guessing).
   return {
     type: "multiple_choice_single",
     promptText,
-    choices,
+    choices: choices.map(c => ({ text: c.text, correct: false })),
   };
 }
 
@@ -177,22 +194,25 @@ function parseOneBlock(block: string): ParsedItem | null {
   const first = lines[0] ?? "";
   if (!looksLikeQuestionStart(first)) return null;
 
-  const promptText = stripNumPrefix(first);
+  const promptFirstLine = stripNumPrefix(first);
   const rest = lines.slice(1).filter(l => !isBlank(l));
 
-  const ef = parseEssayOrFile(rest, promptText);
+  const ef = parseEssayOrFile(rest, promptFirstLine);
   if (ef) return ef;
 
-  const multi = parseBracketMulti(rest, promptText);
+  const multi = parseBracketMulti(rest, promptFirstLine);
   if (multi) return multi;
 
-  const mc = parseStarredAlphaChoices(rest, promptText);
+  const mc = parseStarredAlphaChoices(rest, promptFirstLine);
   if (mc) return mc;
 
-  const sa = parseShortAnswer(rest, promptText);
+  const sa = parseShortAnswer(rest, promptFirstLine);
   if (sa) return sa;
 
-  return null;
+  // Minimal fallback: keep the question instead of dropping it.
+  // This preserves things like matching/table questions (ex: your Question 6).
+  const combined = [promptFirstLine, ...rest].join("\n").trim();
+  return { type: "essay", promptText: combined };
 }
 
 export function parseStrictQuizText(raw: string): { quiz: ParsedQuiz | null; reason?: string } {

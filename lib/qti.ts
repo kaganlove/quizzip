@@ -503,6 +503,12 @@ export async function loadAssessmentItems(file: File, qtiPath: string): Promise<
     }
 
     const correctChoiceIds = getCorrectChoiceIds(it);
+
+    // MINIMAL ADD: warn if the question has choices but no correct answer key
+if (choices.length > 0 && correctChoiceIds.length === 0) {
+  warnings.push(`No correct answer found for item: ${id || "(missing ident)"}`);
+}
+
     items.push({ id, type, promptHtml, choices, correctChoiceIds });
   }
 

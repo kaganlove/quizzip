@@ -254,7 +254,17 @@ export default function Page() {
       if (t) texts.push(t);
     }
 
-    if (letters.length === 0) return null;
+        if (letters.length === 0) {
+      if (q.choices?.length) {
+        return (
+          <div className="small" style={{ marginTop: 10, color: "#b45309", fontWeight: 700 }}>
+            Correct answer not found for this question.
+          </div>
+        );
+      }
+      return null;
+    }
+
 
     return (
       <div className="small" style={{ marginTop: 10 }}>
