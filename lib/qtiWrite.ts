@@ -20,8 +20,11 @@ export type QtiWriteJson = {
   items: QtiWriteItem[];
 };
 
-function xmlEscape(s: string) {
-  return s
+function xmlEscape(s: unknown) {
+  const str =
+    typeof s === "string" ? s : s === null || s === undefined ? "" : String(s);
+
+  return str
     .replaceAll("&", "&amp;")
     .replaceAll("<", "&lt;")
     .replaceAll(">", "&gt;")
