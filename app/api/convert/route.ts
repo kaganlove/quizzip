@@ -159,15 +159,9 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Missing raw quiz text." }, { status: 400 });
     }
 
-    // Parse strict version for question count and explicit structure
+    // Parse strict version (best-effort, not a gatekeeper)
     const strict = parseStrictQuizText(raw);
-
     const strictItems = strict.quiz?.items ?? [];
-    questionCount = strictItems.length;
-
-    if (!questionCount || questionCount < 1) {
-      return NextResponse.json({ error: "No questions detected in input." }, { status: 400 });
-    }
 
     // Cost model: 1 credit per conversion (regardless of question count for now)
     if (userId) {
@@ -180,15 +174,10 @@ export async function POST(req: Request) {
       }
     }
 
-    // Convert using OpenAI (UPDATED: new signature expects one object arg)
-    const convert = await openAiConvertToJson({
-      raw,
-      mode: doReview ? "review" : "convert",
-    });
+    // Convert using OpenAI
+    const convert = await openAiConvertToJson(raw, { doReview });
 
-    // Keep model for logging if you want it (openAiConvertToJson no longer returns it)
-    model = process.env.OPENAI_MODEL || undefined;
-
+    model = convert.model;
     inputTokens = convert.usage?.input_tokens;
     outputTokens = convert.usage?.output_tokens;
 
@@ -196,7 +185,10 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Conversion failed." }, { status: 500 });
     }
 
-    let final: any = convert.data;
+    // If doReview was requested, convert.data already should be the reviewed JSON
+    // But openAiConvertToJson returns review results in data if doReview is enabled.
+    // We will still double-check for validity.
+    let final = convert.data;
 
     // Some guard rails if the model returned string JSON instead of object
     if (typeof final === "string") {
@@ -214,18 +206,18 @@ export async function POST(req: Request) {
     }
 
     // The model sometimes outputs questions under `questions` key.
-    if (!Array.isArray(final.items) && Array.isArray(final.questions)) {
-      final.items = final.questions;
+    if (!Array.isArray(final.items) && Array.isArray((final as any).questions)) {
+      (final as any).items = (final as any).questions;
       delete (final as any).questions;
     }
 
-    if (!Array.isArray(final.items)) {
+    if (!Array.isArray((final as any).items)) {
       return NextResponse.json({ error: "Conversion output missing items." }, { status: 500 });
     }
 
     // Ensure title exists
-    if (!final.title || typeof final.title !== "string") {
-      final.title = clientTitle || "Converted Quiz";
+    if (!(final as any).title || typeof (final as any).title !== "string") {
+      (final as any).title = clientTitle || "Converted Quiz";
     }
 
     // Attempt one more review pass if requested and we detect problems
@@ -237,11 +229,9 @@ export async function POST(req: Request) {
     }
 
     // If the model returned a mismatched item count, do a review pass.
-    if (final.items.length !== strictItems.length) {
-      const review = await openAiConvertToJson({
-        raw,
-        mode: "review",
-      });
+    // Only do this if strict parsing detected anything.
+    if (strictItems.length > 0 && (final as any).items.length !== strictItems.length) {
+      const review = await openAiConvertToJson(raw, { doReview: true, forceReview: true });
       if (review?.data) {
         final = review.data as any;
         reviewUsage = review.usage ?? reviewUsage;
@@ -249,6 +239,7 @@ export async function POST(req: Request) {
     }
 
     // Safety guard: do not allow correct answers unless the raw input contains explicit denotations.
+    // This prevents guessing while still allowing correct answers when the user marked them.
     const rawText = String(raw ?? "");
     const rawHasExplicitCorrectMarkers =
       /\[\s*\*\s*\]/i.test(rawText) || // [*]
@@ -261,10 +252,10 @@ export async function POST(req: Request) {
       /^\s*answer\s*[:\-]/gim.test(rawText); // Answer:
 
     if (!rawHasExplicitCorrectMarkers) {
-      const finalItems: any[] = Array.isArray(final?.items)
-        ? final.items
-        : Array.isArray(final?.questions)
-          ? final.questions
+      const finalItems: any[] = Array.isArray((final as any)?.items)
+        ? (final as any).items
+        : Array.isArray((final as any)?.questions)
+          ? (final as any).questions
           : [];
 
       for (let i = 0; i < finalItems.length; i++) {
@@ -274,13 +265,13 @@ export async function POST(req: Request) {
         }
       }
 
-      if (Array.isArray(final?.items)) final.items = finalItems;
-      if (Array.isArray(final?.questions)) final.questions = finalItems;
+      if (Array.isArray((final as any)?.items)) (final as any).items = finalItems;
+      if (Array.isArray((final as any)?.questions)) (final as any).questions = finalItems;
     }
 
     // Apply client chosen title last so it always wins
     if (clientTitle) {
-      final.title = clientTitle;
+      (final as any).title = clientTitle;
     }
 
     // Restore any quizzip image tokens to real data URLs before generating QTI
@@ -288,14 +279,14 @@ export async function POST(req: Request) {
       final = deepReplaceImageTokens(final, imagesMap);
     }
 
-    const items = final.items ?? [];
+    const items = (final as any).items ?? [];
     questionCount = items.length;
 
-    // UPDATED: accept promptText too (OpenAI output uses promptText)
+    // Validate after conversion (this is now the real gate)
     if (
       !Array.isArray(items) ||
       items.length < 1 ||
-      !items.every((it: any) => it && typeof it === "object" && (typeof it.prompt === "string" || typeof it.promptText === "string"))
+      !items.every((it: any) => it && typeof it === "object" && typeof it.prompt === "string")
     ) {
       return NextResponse.json({ error: "Invalid question items in conversion output." }, { status: 500 });
     }
