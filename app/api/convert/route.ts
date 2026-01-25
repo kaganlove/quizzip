@@ -248,8 +248,9 @@ export async function POST(req: Request) {
       }
     }
 
-    // Safety guard: do not allow correct answers unless the raw input contains explicit denotations.
-    // This prevents guessing while still allowing correct answers when the user marked them.
+    // EDIT 1: Insert marker detector here (between review block and "Do not guess correct answers")
+    // Detect whether the raw input contains explicit correct-answer markers.
+    // If it does, we can safely preserve correct flags from AI conversion without "guessing".
     const rawText = String(raw ?? "");
     const rawHasExplicitCorrectMarkers =
       /\[\s*\*\s*\]/i.test(rawText) || // [*]
@@ -261,23 +262,34 @@ export async function POST(req: Request) {
       /^\s*correct\s*(answer|answers)?\s*[:\-]/gim.test(rawText) || // Correct answer:
       /^\s*answer\s*[:\-]/gim.test(rawText); // Answer:
 
-    if (!rawHasExplicitCorrectMarkers) {
-      const finalItems: any[] = Array.isArray(final?.items)
-        ? final.items
-        : Array.isArray(final?.questions)
-          ? final.questions
-          : [];
+    // Do not guess correct answers.
+    // Keep correct answers only when they were explicitly marked in the original strict parse.
+    const explicitCorrectFlags = strict.quiz?.items?.map((it: any) =>
+      Array.isArray(it?.choices) ? it.choices.some((c: any) => Boolean(c?.correct)) : false
+    );
 
-      for (let i = 0; i < finalItems.length; i++) {
+    const finalItems: any[] = Array.isArray(final?.items)
+      ? final.items
+      : Array.isArray(final?.questions)
+        ? final.questions
+        : [];
+
+    for (let i = 0; i < finalItems.length; i++) {
+      // EDIT 2: Change keep logic line
+      const keep = explicitCorrectFlags
+        ? Boolean(explicitCorrectFlags[i])
+        : rawHasExplicitCorrectMarkers;
+
+      if (!keep) {
         finalItems[i].correctChoiceIds = [];
         if (Array.isArray(finalItems[i].choices)) {
           finalItems[i].choices = finalItems[i].choices.map((c: any) => ({ ...c, correct: false }));
         }
       }
-
-      if (Array.isArray(final?.items)) final.items = finalItems;
-      if (Array.isArray(final?.questions)) final.questions = finalItems;
     }
+
+    if (Array.isArray(final?.items)) final.items = finalItems;
+    if (Array.isArray(final?.questions)) final.questions = finalItems;
 
     // Apply client chosen title last so it always wins
     if (clientTitle) {
