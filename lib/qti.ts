@@ -47,9 +47,20 @@ function getChoices(itemEl: Element): { id: string; html: string }[] {
 }
 
 function getCorrectChoiceIds(itemEl: Element): string[] {
+  function hasNotAncestor(el: Element): boolean {
+    let p: Element | null = el.parentElement;
+    while (p) {
+      if ((p.tagName ?? "").toLowerCase() === "not") return true;
+      p = p.parentElement;
+    }
+    return false;
+  }
+
   const vals = Array.from(itemEl.getElementsByTagName("varequal"))
+    .filter((v) => !hasNotAncestor(v))
     .map((v) => (v.textContent ?? "").trim())
     .filter(Boolean);
+
   return Array.from(new Set(vals));
 }
 
@@ -157,7 +168,9 @@ async function parseSinglePackageZip(
       const qtiPath = bundlePath ? `${bundlePath}::${p}` : p;
       assessments.push(parseQtiAssessment(xml, idFromPath, qtiPath));
     } catch (e: any) {
-      warnings.push((bundleLabel ? `${bundleLabel}: ` : "") + "Could not parse xml " + p + ": " + (e?.message ?? String(e)));
+      warnings.push(
+        (bundleLabel ? `${bundleLabel}: ` : "") + "Could not parse xml " + p + ": " + (e?.message ?? String(e))
+      );
     }
   }
 
@@ -185,7 +198,9 @@ export async function parseCanvasQtiZip(file: File): Promise<ParseResult> {
 
   const nestedZips = listNestedZipPaths(outerZip);
   if (nestedZips.length === 0) {
-    throw new Error("No imsmanifest.xml found and no nested zip packages found. This does not look like a supported QTI export.");
+    throw new Error(
+      "No imsmanifest.xml found and no nested zip packages found. This does not look like a supported QTI export."
+    );
   }
 
   const allAssessments: Assessment[] = [];
@@ -380,7 +395,10 @@ function stripLeadingChoiceLabelingHtml(input: string): string {
 
   // Strip checkbox markers first
   const noBox = s.replace(/^\s*\[\s*[\*xX]?\s*\]\s+/i, "");
-  const s2 = noBox.trimStart();
+
+  // Also strip a plain leading "*" marker (used by some docs to denote correct)
+  const noStar = noBox.replace(/^\s*\*\s+/, "");
+  const s2 = noStar.trimStart();
 
   const htmlFirstTag = s2.replace(/^\s*(<[^>]+>\s*)(\(?\s*[A-D]\s*[\.)\:\-]\s+)/i, "$1");
   if (htmlFirstTag !== s2) return htmlFirstTag;
@@ -503,12 +521,6 @@ export async function loadAssessmentItems(file: File, qtiPath: string): Promise<
     }
 
     const correctChoiceIds = getCorrectChoiceIds(it);
-
-    // MINIMAL ADD: warn if the question has choices but no correct answer key
-if (choices.length > 0 && correctChoiceIds.length === 0) {
-  warnings.push(`No correct answer found for item: ${id || "(missing ident)"}`);
-}
-
     items.push({ id, type, promptHtml, choices, correctChoiceIds });
   }
 
