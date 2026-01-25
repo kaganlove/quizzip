@@ -61,145 +61,238 @@ function splitIntoQuestionBlocks(raw: string) {
   return blocks;
 }
 
-function extractAnswerKey(lines: string[]): {
-  answerLetter: string | null;
-  answerTf: "true" | "false" | null;
-  rest: string[];
-} {
-  // Accept lines like:
-  // Answer: C
-  // Correct answer: b
-  // Correct: D
-  // Key = A
-  // Answer: True
-  const keyRe = /^\s*(?:answer|correct(?:\s*answer)?|key)\s*[:=\-]\s*(.+?)\s*$/i;
+/**
+ * Removes markers/labels from choice text so the UI doesn't show things like:
+ * "* B. Process" or "B) 12" or "[*] A) Foo"
+ */
+function stripChoiceLabel(text: string) {
+  let s = (text ?? "").trim();
 
-  let answerLetter: string | null = null;
-  let answerTf: "true" | "false" | null = null;
+  // Remove leading bracket markers like [*] [x] [ ]
+  s = s.replace(/^\s*\[\s*[\*xX]?\s*\]\s*/i, "");
 
-  const rest: string[] = [];
+  // Remove leading "*" marker
+  s = s.replace(/^\s*\*\s*/, "");
 
-  for (const ln of lines) {
-    const m = ln.match(keyRe);
+  // Remove leading labels like A) a) A. a. A: A - (A)
+  s = s.replace(/^\s*(?:\(?\s*[A-Da-d]\s*\)?\s*[\)\.\:\-]\s+)/, "");
 
-    // Only remove the line if we successfully parse a key
-    if (m && !answerLetter && !answerTf) {
-      const raw = (m[1] ?? "").trim();
+  // Remove leading numeric labels like 1) 1. 1: 1 -
+  s = s.replace(/^\s*(?:\d+\s*[\)\.\:\-]\s+)/, "");
 
-      if (/^(true|false)$/i.test(raw)) {
-        answerTf = raw.toLowerCase() as "true" | "false";
-        continue;
-      }
-
-      const m1 = raw.toUpperCase().match(/\b([A-D])\b/);
-      const m2 = raw.toUpperCase().match(/^\(?\s*([A-D])\s*\)?(?:[)\.])?/);
-
-      const letter = (m1?.[1] ?? m2?.[1] ?? "").trim();
-      if (letter) {
-        answerLetter = letter;
-        continue;
-      }
-    }
-
-    rest.push(ln);
-  }
-
-  return { answerLetter, answerTf, rest };
+  return s.trim();
 }
 
-function parseBracketMulti(lines: string[], promptText: string, answerLetter: string | null): ParsedItem | null {
+function extractLettersFromAnswerText(raw: string): string[] {
+  const s = (raw ?? "").toString();
+
+  // Explicit "option b" patterns
+  const opt = Array.from(s.matchAll(/\boption\s*([A-D])\b/gi)).map((m) => (m[1] ?? "").toUpperCase());
+  if (opt.length) return Array.from(new Set(opt));
+
+  // Standalone letters A-D
+  const letters = Array.from(s.matchAll(/\b([A-D])\b/gi)).map((m) => (m[1] ?? "").toUpperCase());
+  if (letters.length) return Array.from(new Set(letters));
+
+  // Embedded "a)" / "b." / etc
+  const letters2 = Array.from(s.matchAll(/\b([A-D])\s*[\)\.]/gi)).map((m) => (m[1] ?? "").toUpperCase());
+  return Array.from(new Set(letters2));
+}
+
+type AnswerDirective = { letters: string[]; text: string | null; remaining: string[] };
+
+/**
+ * Pulls out answer-key style lines so they don't get treated as choices.
+ * Supports:
+ * - "Correct answers: a, b, c"
+ * - "Correct = ... (option b)"
+ * - "Correct C"
+ * - "Answer: A"
+ * - "Correct answer: a) (embedded vs linked images)"
+ * - "Answer (text): Technician A only"
+ * Also handles the "T / F / TRUE" pattern by treating the last TRUE/FALSE line as an answer key.
+ */
+function extractAnswerDirectives(lines: string[]): AnswerDirective {
+  let answerLetters: string[] = [];
+  let answerText: string | null = null;
+
+  // Detect TF blocks where the last line is the answer key (example: T, F, TRUE)
+  let skipTfAnswerIndex: number | null = null;
+  const nonBlankIdxs = lines.map((l, i) => ({ l, i })).filter((x) => !isBlank(x.l));
+  if (nonBlankIdxs.length >= 3) {
+    const a = nonBlankIdxs[0].l.trim();
+    const b = nonBlankIdxs[1].l.trim();
+    const last = nonBlankIdxs[nonBlankIdxs.length - 1].l.trim();
+
+    const isTfToken = (t: string) => /^(\*?\s*)?(true|false|t|f)\s*$/i.test(t);
+    const isTrueFalseWord = (t: string) => /^(true|false)$/i.test(t.trim());
+    const isStarred = (t: string) => /^\*/.test(t.trim());
+
+    if (isTfToken(a) && isTfToken(b) && isTrueFalseWord(last) && !isStarred(last)) {
+      answerText = last; // apply by text match later
+      skipTfAnswerIndex = nonBlankIdxs[nonBlankIdxs.length - 1].i; // remove from choices
+    }
+  }
+
+  const remaining: string[] = [];
+  for (let i = 0; i < lines.length; i++) {
+    const ln = lines[i];
+    const t = (ln ?? "").trim();
+    if (!t) continue;
+
+    if (skipTfAnswerIndex !== null && i === skipTfAnswerIndex) {
+      continue;
+    }
+
+    // "Correct answers:" / "Correct answer:" / "Answer:" / "Answers:" / "Answer (text):"
+    const m1 = t.match(
+      /^\s*(?:correct\s*answers?|correct\s*answer|answers?|answer)\s*(?:\(text\))?\s*[:=]\s*(.+)$/i
+    );
+    if (m1) {
+      const payload = (m1[1] ?? "").trim();
+      const letters = extractLettersFromAnswerText(payload);
+      if (letters.length) answerLetters = Array.from(new Set([...answerLetters, ...letters]));
+      else answerText = payload;
+      continue;
+    }
+
+    // "Correct C"
+    const m2 = t.match(/^\s*correct\s+([A-D])\s*$/i);
+    if (m2) {
+      answerLetters = Array.from(new Set([...answerLetters, (m2[1] ?? "").toUpperCase()]));
+      continue;
+    }
+
+    // "Answer A"
+    const m3 = t.match(/^\s*answer\s+([A-D])\s*$/i);
+    if (m3) {
+      answerLetters = Array.from(new Set([...answerLetters, (m3[1] ?? "").toUpperCase()]));
+      continue;
+    }
+
+    // "The correct answer is choice C." / "Correct answer is B" (no colon)
+    const m4 = t.match(/^\s*(?:the\s+)?correct\s*(?:answer\s*)?(?:is\s*)?(?:choice\s*)?(.+)\s*$/i);
+    if (m4 && /^\s*(?:the\s+)?correct\b/i.test(t) && !/^\s*correct\s*$/i.test(t)) {
+      const payload = (m4[1] ?? "").trim();
+      // Avoid grabbing the whole line when it's just "correct" (handled above)
+      const letters = extractLettersFromAnswerText(payload);
+      if (letters.length) answerLetters = Array.from(new Set([...answerLetters, ...letters]));
+      else if (payload && payload.toLowerCase() !== "answer") answerText = payload;
+      continue;
+    }
+
+    remaining.push(ln);
+  }
+
+  return { letters: answerLetters, text: answerText, remaining };
+}
+
+function applyAnswerDirectiveToChoices(choices: ParsedChoice[], letters: string[], text: string | null) {
+  if (!choices.length) return choices;
+
+  const out = choices.map((c) => ({ ...c }));
+
+  // Apply letter based keys (A=0, B=1, ...)
+  if (letters.length) {
+    for (const L of letters) {
+      const idx = L.charCodeAt(0) - 65;
+      if (idx >= 0 && idx < out.length) out[idx].correct = true;
+    }
+  }
+
+  // Apply text based keys (match against stripped choice text)
+  if (text) {
+    const target = stripChoiceLabel(text).toLowerCase();
+    if (target) {
+      for (const c of out) {
+        const ct = stripChoiceLabel(c.text).toLowerCase();
+        if (ct === target) c.correct = true;
+      }
+    }
+  }
+
+  return out;
+}
+
+function parseBracketMulti(
+  lines: string[],
+  promptText: string,
+  answerLetters: string[],
+  answerText: string | null
+): ParsedItem | null {
   // Bracketed choices:
   // [ ] Option
   // [*] Option
-  const optionRe = /^\s*\[(\*?)\]\s+(.*\S)\s*$/;
+  // [x] Option
+  const optionRe = /^\s*\[\s*([\*xX]?)\s*\]\s+(.*\S)\s*$/;
 
   const choices: ParsedChoice[] = [];
   for (const ln of lines) {
     const m = ln.match(optionRe);
     if (!m) return null;
-    choices.push({ text: m[2], correct: Boolean(m[1]) });
+    choices.push({ text: stripChoiceLabel(m[2]), correct: Boolean(m[1]) });
   }
 
-  let correctCount = choices.filter((c) => c.correct).length;
+  const applied = applyAnswerDirectiveToChoices(choices, answerLetters, answerText);
+  const correctCount = applied.filter((c) => c.correct).length;
 
-  // If none are marked, allow explicit Answer: C key, still no guessing
   if (correctCount === 0) {
-    if (answerLetter) {
-      const idx = answerLetter.charCodeAt(0) - 65;
-      if (idx >= 0 && idx < choices.length) {
-        choices[idx].correct = true;
-        correctCount = 1;
-      }
-    }
-    return { type: "multiple_choice_single", promptText, choices };
+    return { type: "multiple_choice_single", promptText, choices: applied };
   }
-
-  // If more than one marked, treat as multiple answers
   if (correctCount > 1) {
-    return { type: "multiple_choice_multiple", promptText, choices };
+    return { type: "multiple_choice_multiple", promptText, choices: applied };
   }
-
-  // Exactly one marked, treat as single answer multiple choice
-  return { type: "multiple_choice_single", promptText, choices };
+  return { type: "multiple_choice_single", promptText, choices: applied };
 }
 
 function parseStarredAlphaChoices(
   lines: string[],
   promptText: string,
-  answerLetter: string | null,
-  answerTf: "true" | "false" | null
+  answerLetters: string[],
+  answerText: string | null
 ): ParsedItem | null {
-  // Multiple choice single and True or False
+  // Accepts:
   // a) 1
   // *b) 2
-  const re = /^\s*(\*)?\s*([a-z])\)\s+(.*\S)\s*$/i;
+  // A. 1
+  // * B. 2
+  // A: 1
+  // A - 1
+  const re = /^\s*(\*)?\s*([a-d])\s*[\)\.\:\-]\s+(.*\S)\s*$/i;
 
   const choices: ParsedChoice[] = [];
   for (const ln of lines) {
-    // True or False special case
-    const tf = ln.trim();
-    if (/^\*?\s*(true|false)\s*$/i.test(tf)) {
-      const isCorrect = /^\*/.test(tf);
-      const text = tf.replace(/^\*\s*/, "");
+    const tfRaw = ln.trim();
+
+    // True/False (allow T/F as well)
+    if (/^\*?\s*(true|false|t|f)\s*$/i.test(tfRaw)) {
+      const isCorrect = /^\*/.test(tfRaw);
+      const val = tfRaw.replace(/^\*\s*/i, "").trim();
+      const text =
+        /^t$/i.test(val) ? "True" : /^f$/i.test(val) ? "False" : val[0].toUpperCase() + val.slice(1).toLowerCase();
       choices.push({ text, correct: isCorrect });
       continue;
     }
 
     const m = ln.match(re);
     if (!m) return null;
-    choices.push({ text: m[3], correct: Boolean(m[1]) });
+    choices.push({ text: stripChoiceLabel(m[3]), correct: Boolean(m[1]) });
   }
 
-  let correctCount = choices.filter((c) => c.correct).length;
+  const applied = applyAnswerDirectiveToChoices(choices, answerLetters, answerText);
+  const correctCount = applied.filter((c) => c.correct).length;
 
-  // If none are marked, allow explicit Answer key, still no guessing
   if (correctCount === 0) {
-    if (answerTf) {
-      const hit = choices.find((c) => c.text.trim().toLowerCase() === answerTf);
-      if (hit) {
-        hit.correct = true;
-        correctCount = 1;
-      }
-    } else if (answerLetter) {
-      const idx = answerLetter.charCodeAt(0) - 65;
-      if (idx >= 0 && idx < choices.length) {
-        choices[idx].correct = true;
-        correctCount = 1;
-      }
-    }
-
-    const isTf = choices.length === 2 && choices.every((c) => /^(true|false)$/i.test(c.text.trim()));
-    return { type: isTf ? "true_false" : "multiple_choice_single", promptText, choices };
+    const isTf = applied.length === 2 && applied.every((c) => /^(true|false)$/i.test(c.text.trim()));
+    return { type: isTf ? "true_false" : "multiple_choice_single", promptText, choices: applied };
   }
 
-  // If more than one is marked, treat as multiple answers
   if (correctCount > 1) {
-    return { type: "multiple_choice_multiple", promptText, choices };
+    return { type: "multiple_choice_multiple", promptText, choices: applied };
   }
 
-  // Exactly one marked, treat as single answer multiple choice or TF
-  const isTf = choices.length === 2 && choices.every((c) => /^(true|false)$/i.test(c.text.trim()));
-  return { type: isTf ? "true_false" : "multiple_choice_single", promptText, choices };
+  const isTf = applied.length === 2 && applied.every((c) => /^(true|false)$/i.test(c.text.trim()));
+  return { type: isTf ? "true_false" : "multiple_choice_single", promptText, choices: applied };
 }
 
 function parseShortAnswer(lines: string[], promptText: string): ParsedItem | null {
@@ -245,17 +338,19 @@ function parseOneBlock(block: string): ParsedItem | null {
   if (!looksLikeQuestionStart(first)) return null;
 
   const promptFirstLine = stripNumPrefix(first);
-
   const restRaw = lines.slice(1).filter((l) => !isBlank(l));
-  const { answerLetter, answerTf, rest } = extractAnswerKey(restRaw);
+
+  // NEW: pull out answer keys like "Correct answers: a, b, c" so they don't become choices
+  const extracted = extractAnswerDirectives(restRaw);
+  const rest = extracted.remaining;
 
   const ef = parseEssayOrFile(rest, promptFirstLine);
   if (ef) return ef;
 
-  const multi = parseBracketMulti(rest, promptFirstLine, answerLetter);
+  const multi = parseBracketMulti(rest, promptFirstLine, extracted.letters, extracted.text);
   if (multi) return multi;
 
-  const mc = parseStarredAlphaChoices(rest, promptFirstLine, answerLetter, answerTf);
+  const mc = parseStarredAlphaChoices(rest, promptFirstLine, extracted.letters, extracted.text);
   if (mc) return mc;
 
   const sa = parseShortAnswer(rest, promptFirstLine);
