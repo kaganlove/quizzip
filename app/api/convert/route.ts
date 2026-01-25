@@ -15,7 +15,7 @@ const supabaseServiceRoleKey = requireEnv("SUPABASE_SERVICE_ROLE_KEY");
 
 const supabase = createClient(supabaseUrl, supabaseServiceRoleKey);
 
-function deepReplaceImageTokens(obj: any, imagesMap: Record<string, string>) {
+function deepReplaceImageTokens(obj: any, imagesMap: Record<string, string>): any {
   if (obj == null) return obj;
 
   if (typeof obj === "string") {
