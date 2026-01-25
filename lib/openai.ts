@@ -70,12 +70,17 @@ export async function openAiConvertToJson(args: {
     "5) Output raw HTML inside JSON strings. Do not escape tags into entities.",
     "",
     "Interpret these common authoring conventions:",
-    "1) Multiple choice single: a) b) c) lines, exactly one correct marked with a leading asterisk like *c).",
+    "1) Multiple choice single: a) b) c) lines, exactly one correct marked with a leading asterisk like *c). When a choice is marked correct, remove the asterisk from the choice text.",
     "2) Multiple answers: [ ] incorrect and [*] correct.",
     "3) Short answer: correct answers are lines that start with an asterisk followed by a space, like * Santa.",
     "4) Essay: a line of #### indicates essay.",
     "5) File upload: a line of ^^^^ indicates file upload.",
-    "6) True/False: must be a) True and b) False, with asterisk on the correct one.",
+    "6) True/False: must be a) True and b) False, with asterisk on the correct one. When marked correct, remove the asterisk from the choice text.",
+    "Correct answer rules:",
+    "A) Never guess or infer a correct answer from general knowledge, semantics, probability, or context.",
+    "B) Only mark a choice as correct when the input explicitly denotes it.",
+    "C) Explicit denotations include: a leading asterisk before the option label, bracket markers like [*] or [x], or highlight markup on the option text such as <mark>...</mark> or a span with a background-color style.",
+    "D) If no explicit denotation is present for a question, leave all choices with correct:false and do not invent a correctText.",
   ].join("\n");
 
   const schemaHint = [

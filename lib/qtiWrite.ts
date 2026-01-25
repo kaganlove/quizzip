@@ -43,15 +43,20 @@ function stripChoicePrefix(text: string) {
   if (!text) return text;
   let s = text.trim();
 
+  // MINIMAL ADD: remove leading star markers like "* B) ..." or "*B) ..."
+  s = s.replace(/^\*\s*/, "");
+
   // Remove leading bracket markers like [*] [x] [ ]
   s = s.replace(/^\[(?:\*|x|X| )\]\s*/, "");
 
-  // Remove leading star markers like "* B) ..." used by some docs to indicate correct
-  s = s.replace(/^\*\s*/, "");
-
   // Remove leading labels like A) a) A. a. (A) 1) 1.
   s = s.replace(/^(?:\(?[A-Da-d]\)?[)\.:]\s+)/, "");
+  // MINIMAL ADD: if star is after label like "B) * text"
+  s = s.replace(/^\*\s*/, "");
+
   s = s.replace(/^(?:\d+[)\.:]\s+)/, "");
+  // MINIMAL ADD: if star survives numeric style
+  s = s.replace(/^\*\s*/, "");
 
   return s.trim();
 }
@@ -137,7 +142,7 @@ function buildItemMetadataXml(type: string) {
   `.trim();
 }
 
-// MINIMAL CHANGE: stripChoicePrefix applied here so Canvas does not show A) or "*" inside the choice text
+// MINIMAL CHANGE: stripChoicePrefix applied here so Canvas does not show A) inside the choice text
 function buildRenderChoiceXml(choices: QtiWriteChoice[]) {
   const labels = choices
     .map(
@@ -162,6 +167,7 @@ function buildItemXml(item: QtiWriteItem, index: number) {
   const ident = escapeXml(item.id || `q${index + 1}`);
   const title = escapeXml(`Question ${index + 1}`);
 
+  // ONLY CHANGE THAT MATTERS:
   // remove leading "12)" from the prompt that gets written into Canvas
   const promptHtml = stripLeadingQuestionNumber(item.promptHtml || "");
   const promptText = stripHtmlToText(promptHtml);
@@ -186,6 +192,8 @@ function buildItemXml(item: QtiWriteItem, index: number) {
       </presentation>
     `.trim();
 
+    // MINIMAL CHANGE: add SCORE setvar so Canvas can detect correct answers
+    // Also: for multiple answers, require all correct selected and all incorrect not selected
     let respconditions = "";
 
     if (qt === "multiple_answers_question") {
@@ -229,7 +237,7 @@ function buildItemXml(item: QtiWriteItem, index: number) {
         respconditions = `
           <respcondition continue="No">
             <conditionvar>
-              <varequal respident="${responseIdent}">${escapeXml(firstCorrect)}</varepsilon>
+              <varequal respident="${responseIdent}">${escapeXml(firstCorrect)}</varequal>
             </conditionvar>
             <setvar varname="SCORE" action="Set">100</setvar>
           </respcondition>
@@ -255,7 +263,7 @@ function buildItemXml(item: QtiWriteItem, index: number) {
     `.trim();
   }
 
-  // Essay fallback
+  // Essay fallback (imports reliably into Canvas even when we do not have gradable structure)
   const presentation = `
     <presentation>
       <material>
@@ -304,7 +312,9 @@ function buildAssessmentXml(json: QtiWriteJson) {
 }
 
 function buildManifestXml(title: string, files: string[]) {
-  const fileTags = files.map((f) => `      <file href="${escapeXml(f)}"/>`).join("\n");
+  const fileTags = files
+    .map((f) => `      <file href="${escapeXml(f)}"/>`)
+    .join("\n");
 
   return normalizeNewlines(`
 <?xml version="1.0" encoding="UTF-8"?>
@@ -358,6 +368,9 @@ async function buildZipBytes(json: QtiWriteJson) {
 }
 
 function normalizeWriteJson(titleOrJson: any, maybeItems?: any[]): QtiWriteJson {
+  // Support both call styles:
+  // 1) buildQtiZip({ title, items })
+  // 2) buildQtiZip(title, items)  (older call sites)
   const raw: any =
     typeof titleOrJson === "string" || Array.isArray(maybeItems)
       ? { title: titleOrJson, items: maybeItems }
@@ -385,12 +398,14 @@ function normalizeItem(rawItem: any, idx: number) {
   let choices: any[] = [];
   if (Array.isArray(rawChoices)) {
     if (rawChoices.length > 0 && typeof rawChoices[0] === "object" && rawChoices[0] !== null) {
+      // Could be { id, text } or { text, correct }
       choices = rawChoices.map((c: any, i: number) => ({
         id: (c.id ?? String.fromCharCode(65 + i)).toString(),
         text: (c.text ?? c.html ?? c.value ?? "").toString(),
         correct: Boolean(c.correct),
       }));
     } else {
+      // Array of strings
       choices = rawChoices.map((t: any, i: number) => ({
         id: String.fromCharCode(65 + i),
         text: (t ?? "").toString(),
@@ -404,11 +419,13 @@ function normalizeItem(rawItem: any, idx: number) {
   if (Array.isArray(rawItem?.correctChoiceIds) && rawItem.correctChoiceIds.length > 0) {
     correctChoiceIds = rawItem.correctChoiceIds.map((x: any) => x.toString());
   } else {
+    // From per choice flags (textParser output)
     const flagged = choices.filter((c) => c.correct).map((c) => c.id);
     if (flagged.length) correctChoiceIds = flagged;
   }
 
   if (correctChoiceIds.length === 0) {
+    // From letters (A, B, C...)
     const lettersRaw =
       rawItem?.correctLetters ?? rawItem?.correctLetter ?? rawItem?.correct ?? rawItem?.answer ?? rawItem?.answers;
 
@@ -443,7 +460,7 @@ function normalizeItem(rawItem: any, idx: number) {
   }
   if (type === "multiple_choice_single") type = "multiple_choice";
   if (type === "multiple_choice_multiple") type = "multiple_answers";
-  if (type === "short_answer") type = "essay";
+  if (type === "short_answer") type = "essay"; // safest for Canvas import
 
   // Ensure stable ids for choices if missing
   choices = choices.map((c, i) => ({ ...c, id: (c.id ?? String.fromCharCode(65 + i)).toString() }));
