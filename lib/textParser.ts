@@ -61,7 +61,53 @@ function splitIntoQuestionBlocks(raw: string) {
   return blocks;
 }
 
-function parseBracketMulti(lines: string[], promptText: string): ParsedItem | null {
+function extractAnswerKey(lines: string[]): {
+  answerLetter: string | null;
+  answerTf: "true" | "false" | null;
+  rest: string[];
+} {
+  // Accept lines like:
+  // Answer: C
+  // Correct answer: b
+  // Correct: D
+  // Key = A
+  // Answer: True
+  const keyRe = /^\s*(?:answer|correct(?:\s*answer)?|key)\s*[:=\-]\s*(.+?)\s*$/i;
+
+  let answerLetter: string | null = null;
+  let answerTf: "true" | "false" | null = null;
+
+  const rest: string[] = [];
+
+  for (const ln of lines) {
+    const m = ln.match(keyRe);
+
+    // Only remove the line if we successfully parse a key
+    if (m && !answerLetter && !answerTf) {
+      const raw = (m[1] ?? "").trim();
+
+      if (/^(true|false)$/i.test(raw)) {
+        answerTf = raw.toLowerCase() as "true" | "false";
+        continue;
+      }
+
+      const m1 = raw.toUpperCase().match(/\b([A-D])\b/);
+      const m2 = raw.toUpperCase().match(/^\(?\s*([A-D])\s*\)?(?:[)\.])?/);
+
+      const letter = (m1?.[1] ?? m2?.[1] ?? "").trim();
+      if (letter) {
+        answerLetter = letter;
+        continue;
+      }
+    }
+
+    rest.push(ln);
+  }
+
+  return { answerLetter, answerTf, rest };
+}
+
+function parseBracketMulti(lines: string[], promptText: string, answerLetter: string | null): ParsedItem | null {
   // Bracketed choices:
   // [ ] Option
   // [*] Option
@@ -74,10 +120,17 @@ function parseBracketMulti(lines: string[], promptText: string): ParsedItem | nu
     choices.push({ text: m[2], correct: Boolean(m[1]) });
   }
 
-  const correctCount = choices.filter((c) => c.correct).length;
+  let correctCount = choices.filter((c) => c.correct).length;
 
-  // If none are marked, keep the question but leave correct blank
+  // If none are marked, allow explicit Answer: C key, still no guessing
   if (correctCount === 0) {
+    if (answerLetter) {
+      const idx = answerLetter.charCodeAt(0) - 65;
+      if (idx >= 0 && idx < choices.length) {
+        choices[idx].correct = true;
+        correctCount = 1;
+      }
+    }
     return { type: "multiple_choice_single", promptText, choices };
   }
 
@@ -90,7 +143,12 @@ function parseBracketMulti(lines: string[], promptText: string): ParsedItem | nu
   return { type: "multiple_choice_single", promptText, choices };
 }
 
-function parseStarredAlphaChoices(lines: string[], promptText: string): ParsedItem | null {
+function parseStarredAlphaChoices(
+  lines: string[],
+  promptText: string,
+  answerLetter: string | null,
+  answerTf: "true" | "false" | null
+): ParsedItem | null {
   // Multiple choice single and True or False
   // a) 1
   // *b) 2
@@ -112,10 +170,24 @@ function parseStarredAlphaChoices(lines: string[], promptText: string): ParsedIt
     choices.push({ text: m[3], correct: Boolean(m[1]) });
   }
 
-  const correctCount = choices.filter((c) => c.correct).length;
+  let correctCount = choices.filter((c) => c.correct).length;
 
-  // If none are marked, keep the question but leave correct blank
+  // If none are marked, allow explicit Answer key, still no guessing
   if (correctCount === 0) {
+    if (answerTf) {
+      const hit = choices.find((c) => c.text.trim().toLowerCase() === answerTf);
+      if (hit) {
+        hit.correct = true;
+        correctCount = 1;
+      }
+    } else if (answerLetter) {
+      const idx = answerLetter.charCodeAt(0) - 65;
+      if (idx >= 0 && idx < choices.length) {
+        choices[idx].correct = true;
+        correctCount = 1;
+      }
+    }
+
     const isTf = choices.length === 2 && choices.every((c) => /^(true|false)$/i.test(c.text.trim()));
     return { type: isTf ? "true_false" : "multiple_choice_single", promptText, choices };
   }
@@ -129,7 +201,6 @@ function parseStarredAlphaChoices(lines: string[], promptText: string): ParsedIt
   const isTf = choices.length === 2 && choices.every((c) => /^(true|false)$/i.test(c.text.trim()));
   return { type: isTf ? "true_false" : "multiple_choice_single", promptText, choices };
 }
-
 
 function parseShortAnswer(lines: string[], promptText: string): ParsedItem | null {
   const re = /^\s*\*\s+(.*\S)\s*$/;
@@ -154,12 +225,12 @@ function parseShortAnswer(lines: string[], promptText: string): ParsedItem | nul
 }
 
 function parseEssayOrFile(lines: string[], promptText: string): ParsedItem | null {
-  const hasEssayMarker = lines.some(l => /^\s*#{3,4}\s*$/.test(l));
+  const hasEssayMarker = lines.some((l) => /^\s*#{3,4}\s*$/.test(l));
   if (hasEssayMarker) {
     return { type: "essay", promptText };
   }
 
-  const hasFileMarker = lines.some(l => /^\s*\^{3,4}\s*$/.test(l));
+  const hasFileMarker = lines.some((l) => /^\s*\^{3,4}\s*$/.test(l));
   if (hasFileMarker) {
     return { type: "file_upload", promptText };
   }
@@ -174,15 +245,17 @@ function parseOneBlock(block: string): ParsedItem | null {
   if (!looksLikeQuestionStart(first)) return null;
 
   const promptFirstLine = stripNumPrefix(first);
-  const rest = lines.slice(1).filter(l => !isBlank(l));
+
+  const restRaw = lines.slice(1).filter((l) => !isBlank(l));
+  const { answerLetter, answerTf, rest } = extractAnswerKey(restRaw);
 
   const ef = parseEssayOrFile(rest, promptFirstLine);
   if (ef) return ef;
 
-  const multi = parseBracketMulti(rest, promptFirstLine);
+  const multi = parseBracketMulti(rest, promptFirstLine, answerLetter);
   if (multi) return multi;
 
-  const mc = parseStarredAlphaChoices(rest, promptFirstLine);
+  const mc = parseStarredAlphaChoices(rest, promptFirstLine, answerLetter, answerTf);
   if (mc) return mc;
 
   const sa = parseShortAnswer(rest, promptFirstLine);
