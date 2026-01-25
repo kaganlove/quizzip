@@ -81,7 +81,14 @@ async function decrementCredits(userId: string, amount: number) {
     .eq("user_id", userId)
     .maybeSingle();
 
-  if (error) throw error;
+  if (error) {
+    const msg = (error as any)?.message || String(error);
+    if (msg.includes("public.credits") || msg.includes("credits")) {
+      // credits table not present; credits system disabled
+      return { ok: true, current: 0, newCredits: 0 };
+    }
+    throw error;
+  }
 
   const current = data?.credits ?? 0;
   if (current < amount) {
