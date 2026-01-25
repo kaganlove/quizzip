@@ -75,11 +75,16 @@ export async function openAiConvertToJson(args: {
     "3) Short answer: correct answers are lines that start with an asterisk followed by a space, like * Santa.",
     "4) Essay: a line of #### indicates essay.",
     "5) File upload: a line of ^^^^ indicates file upload.",
-    "6) True/False: must be a) True and b) False, with asterisk on the correct one. When marked correct, remove the asterisk from the choice text.",
+    "6) True or False: must be a) True and b) False, with asterisk on the correct one. When marked correct, remove the asterisk from the choice text.",
+    "",
+    "7) If a question block contains a line like 'Correct: B (12)' or 'Correct: A' or 'Correct: C, D', treat that as explicit and mark the matching choice letters as correct.",
+    "8) If a question block says 'Correct: (none)' then leave all choices correct:false.",
+    "9) If there is an 'Answer Key' section at the end with numbered entries like '1. B (12)', use it to set correct answers for the corresponding question number when the question itself does not include a correct marker.",
+    "",
     "Correct answer rules:",
     "A) Never guess or infer a correct answer from general knowledge, semantics, probability, or context.",
     "B) Only mark a choice as correct when the input explicitly denotes it.",
-    "C) Explicit denotations include: a leading asterisk before the option label, bracket markers like [*] or [x], or highlight markup on the option text such as <mark>...</mark> or a span with a background-color style or background style, or legacy bgcolor=.",
+    "C) Explicit denotations include: a leading asterisk before the option label, bracket markers like [*] or [x], highlight markup on the option text such as <mark>...</mark> or a span with a background-color or background style, or explicit key lines like 'Correct: B' and entries in an 'Answer Key' section.",
     "D) If no explicit denotation is present for a question, leave all choices with correct:false and do not invent a correctText.",
   ].join("\n");
 
