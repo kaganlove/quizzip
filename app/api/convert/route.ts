@@ -20,10 +20,18 @@ function deepReplaceImageTokens(obj: any, imagesMap: Record<string, string>): an
 
   if (typeof obj === "string") {
     // Replace any tokens like __QUIZZIP_IMAGE_TOKEN:abc123__ with actual data URLs
-    return obj.replace(/__QUIZZIP_IMAGE_TOKEN:([a-zA-Z0-9_-]+)__/g, (match, token) => {
+    let s = obj.replace(/__QUIZZIP_IMAGE_TOKEN:([a-zA-Z0-9_-]+)__/g, (match, token) => {
       const dataUrl = imagesMap[token];
       return dataUrl ? dataUrl : match;
     });
+
+    // Replace tokens like quizzip:QUIZZIP_IMAGE_3 with actual data URLs
+    s = s.replace(/quizzip:(QUIZZIP_IMAGE_\d+)/g, (match, token) => {
+      const dataUrl = imagesMap[token];
+      return dataUrl ? dataUrl : match;
+    });
+
+    return s;
   }
 
   if (Array.isArray(obj)) {
@@ -155,7 +163,18 @@ export async function POST(req: Request) {
 
     const doReview = Boolean(body?.do_review) || body?.mode === "ai+review";
     const clientTitle = typeof body?.title === "string" ? body.title.trim() : "";
-    const imagesMap = body?.imagesMap && typeof body.imagesMap === "object" ? body.imagesMap : null;
+
+    // UPDATED: accept either imagesMap OR images (array of {id,src})
+    const imagesMap =
+      body?.imagesMap && typeof body.imagesMap === "object"
+        ? body.imagesMap
+        : Array.isArray(body?.images)
+          ? Object.fromEntries(
+              body.images
+                .filter((img: any) => img && typeof img.id === "string" && typeof img.src === "string")
+                .map((img: any) => [img.id, img.src])
+            )
+          : null;
 
     mode = doReview ? "ai+review" : "ai";
 
@@ -255,7 +274,6 @@ export async function POST(req: Request) {
       }
     }
 
-    // EDIT 1: Insert marker detector here (between review block and "Do not guess correct answers")
     // Detect whether the raw input contains explicit correct-answer markers.
     // If it does, we can safely preserve correct flags from AI conversion without "guessing".
     const rawText = String(raw ?? "");
@@ -265,6 +283,8 @@ export async function POST(req: Request) {
       /^\s*\*\s*\(?\s*[a-d]\s*[\)\.\:\-]/gim.test(rawText) || // *b) or *B.
       /<mark\b/i.test(rawText) || // <mark>...</mark>
       /background-color\s*:/i.test(rawText) || // inline highlight style
+      /background\s*:/i.test(rawText) || // inline highlight style (Word often uses background:)
+      /bgcolor\s*=/i.test(rawText) || // legacy html highlight
       /\(\s*correct\s*\)/i.test(rawText) || // (correct)
       /^\s*correct\s*(answer|answers)?\s*[:\-]/gim.test(rawText) || // Correct answer:
       /^\s*answer\s*[:\-]/gim.test(rawText); // Answer:
@@ -282,7 +302,6 @@ export async function POST(req: Request) {
         : [];
 
     for (let i = 0; i < finalItems.length; i++) {
-      // EDIT 2: Change keep logic line
       const keep = explicitCorrectFlags
         ? Boolean(explicitCorrectFlags[i])
         : rawHasExplicitCorrectMarkers;

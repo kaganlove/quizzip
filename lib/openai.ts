@@ -79,7 +79,7 @@ export async function openAiConvertToJson(args: {
     "Correct answer rules:",
     "A) Never guess or infer a correct answer from general knowledge, semantics, probability, or context.",
     "B) Only mark a choice as correct when the input explicitly denotes it.",
-    "C) Explicit denotations include: a leading asterisk before the option label, bracket markers like [*] or [x], or highlight markup on the option text such as <mark>...</mark> or a span with a background-color style.",
+    "C) Explicit denotations include: a leading asterisk before the option label, bracket markers like [*] or [x], or highlight markup on the option text such as <mark>...</mark> or a span with a background-color style or background style, or legacy bgcolor=.",
     "D) If no explicit denotation is present for a question, leave all choices with correct:false and do not invent a correctText.",
   ].join("\n");
 
