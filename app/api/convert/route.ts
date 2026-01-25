@@ -180,10 +180,15 @@ export async function POST(req: Request) {
       }
     }
 
-    // Convert using OpenAI
-    const convert = await openAiConvertToJson(raw, { doReview });
+    // Convert using OpenAI (UPDATED: new signature expects one object arg)
+    const convert = await openAiConvertToJson({
+      raw,
+      mode: doReview ? "review" : "convert",
+    });
 
-    model = convert.model;
+    // Keep model for logging if you want it (openAiConvertToJson no longer returns it)
+    model = process.env.OPENAI_MODEL || undefined;
+
     inputTokens = convert.usage?.input_tokens;
     outputTokens = convert.usage?.output_tokens;
 
@@ -191,10 +196,7 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Conversion failed." }, { status: 500 });
     }
 
-    // If doReview was requested, convert.data already should be the reviewed JSON
-    // But openAiConvertToJson returns review results in data if doReview is enabled.
-    // We will still double-check for validity.
-    let final = convert.data;
+    let final: any = convert.data;
 
     // Some guard rails if the model returned string JSON instead of object
     if (typeof final === "string") {
@@ -211,7 +213,6 @@ export async function POST(req: Request) {
       final = final.quiz;
     }
 
-    // If we have a strict parse, we can enforce the item count if needed.
     // The model sometimes outputs questions under `questions` key.
     if (!Array.isArray(final.items) && Array.isArray(final.questions)) {
       final.items = final.questions;
@@ -236,17 +237,18 @@ export async function POST(req: Request) {
     }
 
     // If the model returned a mismatched item count, do a review pass.
-    // (This is a soft guard and can be adjusted later.)
     if (final.items.length !== strictItems.length) {
-      const review = await openAiConvertToJson(raw, { doReview: true, forceReview: true });
+      const review = await openAiConvertToJson({
+        raw,
+        mode: "review",
+      });
       if (review?.data) {
-        final = review.data;
+        final = review.data as any;
         reviewUsage = review.usage ?? reviewUsage;
       }
     }
 
     // Safety guard: do not allow correct answers unless the raw input contains explicit denotations.
-    // This prevents guessing while still allowing correct answers when the user marked them.
     const rawText = String(raw ?? "");
     const rawHasExplicitCorrectMarkers =
       /\[\s*\*\s*\]/i.test(rawText) || // [*]
@@ -289,10 +291,11 @@ export async function POST(req: Request) {
     const items = final.items ?? [];
     questionCount = items.length;
 
+    // UPDATED: accept promptText too (OpenAI output uses promptText)
     if (
       !Array.isArray(items) ||
       items.length < 1 ||
-      !items.every((it: any) => it && typeof it === "object" && typeof it.prompt === "string")
+      !items.every((it: any) => it && typeof it === "object" && (typeof it.prompt === "string" || typeof it.promptText === "string"))
     ) {
       return NextResponse.json({ error: "Invalid question items in conversion output." }, { status: 500 });
     }
