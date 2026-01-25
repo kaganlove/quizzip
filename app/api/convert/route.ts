@@ -302,9 +302,9 @@ export async function POST(req: Request) {
         : [];
 
     for (let i = 0; i < finalItems.length; i++) {
-      const keep = explicitCorrectFlags
-        ? Boolean(explicitCorrectFlags[i])
-        : rawHasExplicitCorrectMarkers;
+      const keep =
+        (explicitCorrectFlags ? Boolean(explicitCorrectFlags[i]) : false) ||
+        rawHasExplicitCorrectMarkers;
 
       if (!keep) {
         finalItems[i].correctChoiceIds = [];
