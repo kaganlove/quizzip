@@ -1,3 +1,4 @@
+// app/app/page.tsx
 "use client";
 
 export const dynamic = "force-dynamic";
@@ -254,7 +255,7 @@ export default function Page() {
       if (t) texts.push(t);
     }
 
-        if (letters.length === 0) {
+    if (letters.length === 0) {
       if (q.choices?.length) {
         return (
           <div className="small" style={{ marginTop: 10, color: "#b45309", fontWeight: 700 }}>
@@ -264,7 +265,6 @@ export default function Page() {
       }
       return null;
     }
-
 
     return (
       <div className="small" style={{ marginTop: 10 }}>
@@ -408,47 +408,121 @@ export default function Page() {
     return (result.value || "").trim();
   }
 
+  // ONLY CHANGE: preserve highlights by parsing DOCX XML directly and wrapping highlighted runs in <mark>
   async function extractDocxAsHtmlWithTokens(
     ab: ArrayBuffer
   ): Promise<{ html: string; images: Array<{ id: string; src: string }> }> {
-    const mammoth = await import("mammoth/mammoth.browser");
+    const JSZip = (await import("jszip")).default;
+    const zip = await JSZip.loadAsync(ab);
 
-    const result = await mammoth.convertToHtml(
-      { arrayBuffer: ab },
-      {
-        convertImage: mammoth.images.inline(async (image: any) => {
-          const b64 = await image.read("base64");
-          const contentType = image.contentType || "image/png";
-          return { src: `data:${contentType};base64,${b64}` };
-        }),
-      }
-    );
+    const docXml = await zip.file("word/document.xml")?.async("text");
+    const relsXml = await zip.file("word/_rels/document.xml.rels")?.async("text");
 
-    const rawHtml = (result.value || "").trim();
-    if (!rawHtml) return { html: "", images: [] };
+    if (!docXml || !relsXml) return { html: "", images: [] };
 
-    const doc = new DOMParser().parseFromString(`<div>${rawHtml}</div>`, "text/html");
-    const root = doc.body.firstElementChild as HTMLElement | null;
+    const parseXml = (s: string) => new DOMParser().parseFromString(s, "application/xml");
+
+    const doc = parseXml(docXml);
+    const rels = parseXml(relsXml);
+
+    const relMap = new Map<string, string>();
+    for (const r of Array.from(rels.getElementsByTagName("Relationship"))) {
+      const id = r.getAttribute("Id") || "";
+      const target = r.getAttribute("Target") || "";
+      if (id && target) relMap.set(id, target);
+    }
+
+    const escapeHtml = (s: string) =>
+      (s ?? "")
+        .replaceAll("&", "&amp;")
+        .replaceAll("<", "&lt;")
+        .replaceAll(">", "&gt;")
+        .replaceAll('"', "&quot;")
+        .replaceAll("'", "&#39;");
 
     const images: Array<{ id: string; src: string }> = [];
-    if (root) {
-      const imgs = Array.from(root.querySelectorAll("img"));
-      let n = 0;
+    let imageCounter = 0;
 
-      for (const img of imgs) {
-        const src = (img.getAttribute("src") || "").trim();
-        if (!src.toLowerCase().startsWith("data:")) continue;
+    async function dataUrlForTarget(target: string): Promise<string | null> {
+      const normalized = target.startsWith("/") ? target.slice(1) : target;
+      const fullPath = normalized.startsWith("word/") ? normalized : `word/${normalized}`;
 
-        n += 1;
-        const id = `QUIZZIP_IMAGE_${n}`;
-        images.push({ id, src });
+      const f = zip.file(fullPath);
+      if (!f) return null;
 
-        img.setAttribute("src", `quizzip:${id}`);
+      const ext = (fullPath.split(".").pop() || "").toLowerCase();
+      const contentType =
+        ext === "png"
+          ? "image/png"
+          : ext === "jpg" || ext === "jpeg"
+            ? "image/jpeg"
+            : ext === "gif"
+              ? "image/gif"
+              : ext === "webp"
+                ? "image/webp"
+                : "application/octet-stream";
+
+      const b64 = await f.async("base64");
+      return `data:${contentType};base64,${b64}`;
+    }
+
+    function runIsHighlighted(runEl: Element): boolean {
+      const rPr = Array.from(runEl.children).find((c) => c.tagName === "w:rPr");
+      if (!rPr) return false;
+
+      if (rPr.getElementsByTagName("w:highlight")?.length) return true;
+
+      const shd = rPr.getElementsByTagName("w:shd")?.[0];
+      if (shd && (shd.getAttribute("w:fill") || shd.getAttribute("fill"))) return true;
+
+      return false;
+    }
+
+    async function renderRun(runEl: Element): Promise<string> {
+      const blips = Array.from(runEl.getElementsByTagName("a:blip"));
+      for (const b of blips) {
+        const rid = b.getAttribute("r:embed") || "";
+        const target = rid ? relMap.get(rid) : null;
+        if (!target) continue;
+
+        const dataUrl = await dataUrlForTarget(target);
+        if (!dataUrl) continue;
+
+        imageCounter += 1;
+        const id = `QUIZZIP_IMAGE_${imageCounter}`;
+        images.push({ id, src: dataUrl });
+
+        return `<img src="quizzip:${id}" />`;
+      }
+
+      const texts = Array.from(runEl.getElementsByTagName("w:t")).map((t) => t.textContent || "");
+      const text = texts.join("");
+      if (!text) return "";
+
+      const safe = escapeHtml(text);
+      return runIsHighlighted(runEl) ? `<mark>${safe}</mark>` : safe;
+    }
+
+    const paragraphs = Array.from(doc.getElementsByTagName("w:p"));
+
+    const htmlParts: string[] = [];
+    for (const p of paragraphs) {
+      const runs = Array.from(p.getElementsByTagName("w:r"));
+
+      const runHtml: string[] = [];
+      for (const r of runs) {
+        runHtml.push(await renderRun(r));
+      }
+
+      const inner = runHtml.join("");
+      const trimmed = inner.replace(/\s+/g, " ").trim();
+
+      if (trimmed) {
+        htmlParts.push(`<p>${inner}</p>`);
       }
     }
 
-    const htmlOut = root ? root.innerHTML : rawHtml;
-    return { html: htmlOut.trim(), images };
+    return { html: htmlParts.join("\n").trim(), images };
   }
 
   async function extractTextFromFile(f: File, opts: { preserveDocxImages: boolean }): Promise<string> {
@@ -1352,10 +1426,7 @@ export default function Page() {
                   <div className="small">{q.type}</div>
                   <div style={{ fontSize: 18, fontWeight: 950, marginTop: 6 }}>{qi + 1}.</div>
                   <div style={{ marginTop: 8 }}>
-                    <div
-                      className="qtiPrompt"
-                      dangerouslySetInnerHTML={{ __html: sanitizeHtml(q.promptHtml || "(no prompt)") }}
-                    />
+                    <div className="qtiPrompt" dangerouslySetInnerHTML={{ __html: sanitizeHtml(q.promptHtml || "(no prompt)") }} />
                   </div>
 
                   {q.choices.length > 0 && (
@@ -1365,10 +1436,7 @@ export default function Page() {
                         return (
                           <div key={c.id} className={"choice " + (isCorrectChoice ? "correct" : "")}>
                             <div className="tag">{String.fromCharCode(65 + ci)}</div>
-                            <div
-                              className="qtiChoiceHtml"
-                              dangerouslySetInnerHTML={{ __html: sanitizeHtml(c.html || "(blank choice)") }}
-                            />
+                            <div className="qtiChoiceHtml" dangerouslySetInnerHTML={{ __html: sanitizeHtml(c.html || "(blank choice)") }} />
                           </div>
                         );
                       })}
