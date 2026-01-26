@@ -18,31 +18,29 @@ export type ParsedQuiz = {
   items: ParsedItem[];
 };
 
-function lineHasHighlight(s: string) {
-  const t = String(s || "");
-  return (
-    /<mark\b/i.test(t) ||
-    /bgcolor\s*=/i.test(t) ||
-    /background-color\s*:/i.test(t) ||
-    /background\s*:/i.test(t) ||
-    /mso-highlight\s*:/i.test(t) ||
-    /\bhighlight\b/i.test(t)
-  );
-}
-
 function extractAnswerLetters(line: string): string[] {
   const s = (line ?? "").trim();
   if (!s) return [];
 
-  const m = s.match(/^(?:correct\s*answers?|correct\s*answer|correct|answer)\s*[:=]?\s*(.+)$/i);
+  // Supports:
+  // "Correct: C"
+  // "Correct answers: a, b"
+  // "Answer: A"
+  // "Answer (text): Technician A only"
+  // "Correct = .zip (option b)"
+  const m = s.match(
+    /^(?:correct\s*answers?|correct\s*answer|correct|answer)(?:\s*\([^)]*\))?\s*[:=]?\s*(.+)$/i
+  );
   const tail = (m ? m[1] : s).trim();
 
   const found: string[] = [];
 
+  // Prefer explicit "option X" if present
   for (const opt of tail.matchAll(/\boption\s*([a-d])\b/gi)) {
     found.push((opt[1] ?? "").toUpperCase());
   }
 
+  // Otherwise pick single letter tokens A to D
   for (const mm of tail.matchAll(/\b([a-d])\b/gi)) {
     found.push((mm[1] ?? "").toUpperCase());
   }
@@ -54,13 +52,17 @@ function extractTrueFalseAnswer(line: string): "true" | "false" | null {
   const s = (line ?? "").trim();
   if (!s) return null;
 
-  const m = s.match(/^(?:correct|answer)\s*[:=]?\s*(true|false)\b/i);
+  const m = s.match(
+    /^(?:correct|answer)(?:\s*\([^)]*\))?\s*[:=]?\s*(true|false)\b/i
+  );
   if (!m) return null;
   return m[1].toLowerCase() === "true" ? "true" : "false";
 }
 
 function looksLikeAnswerKeyLine(line: string) {
-  return /^(?:\s*(?:correct\s*answers?|correct\s*answer|correct|answer)\b)/i.test(line ?? "");
+  return /^(?:\s*(?:correct\s*answers?|correct\s*answer|correct|answer)\b)/i.test(
+    line ?? ""
+  );
 }
 
 function normLines(raw: string) {
@@ -108,6 +110,8 @@ function splitIntoQuestionBlocks(raw: string) {
 
 function stripChoiceLabel(text: string) {
   const s = (text ?? "").trim();
+
+  // Example: "B. Process" or "b) Process" or "(C): Process"
   return s.replace(/^\s*\(?\s*[A-D]\s*[\)\.\:\-]\s+/i, "").trim();
 }
 
@@ -129,11 +133,7 @@ function parseBracketMulti(lines: string[], promptText: string): ParsedItem | nu
 
     const m = ln.match(optionRe);
     if (!m) return null;
-
-    const choiceText = m[2];
-    const isCorrect = Boolean(m[1]) || lineHasHighlight(ln) || lineHasHighlight(choiceText);
-
-    choices.push({ text: choiceText, correct: isCorrect });
+    choices.push({ text: m[2], correct: Boolean(m[1]) });
   }
 
   if (choices.every((c) => !c.correct)) {
@@ -165,7 +165,7 @@ function parseBracketMulti(lines: string[], promptText: string): ParsedItem | nu
 function parseStarredAlphaChoices(lines: string[], promptText: string): ParsedItem | null {
   // a) 1
   // *b) 2
-  // B. Text, * B. Text, (A): Text, A - Text
+  // Also allow: "B. Text", "* B. Text", "(A): Text", "A - Text"
   const re = /^\s*(\*)?\s*\(?\s*([a-d])\s*[\)\.\:\-]\s+(.*\S)\s*$/i;
 
   const choices: ParsedChoice[] = [];
@@ -181,7 +181,7 @@ function parseStarredAlphaChoices(lines: string[], promptText: string): ParsedIt
 
     const tf = ln.trim();
     if (/^\*?\s*(true|false)\s*$/i.test(tf)) {
-      const isCorrect = /^\*/.test(tf) || lineHasHighlight(ln);
+      const isCorrect = /^\*/.test(tf);
       const text = tf.replace(/^\*\s*/, "");
       choices.push({ text, correct: isCorrect });
       continue;
@@ -191,11 +191,8 @@ function parseStarredAlphaChoices(lines: string[], promptText: string): ParsedIt
     if (!m) return null;
 
     const text = stripChoiceLabel(m[3]);
-
     const isCorrect =
       Boolean(m[1]) ||
-      lineHasHighlight(ln) ||
-      lineHasHighlight(m[3]) ||
       /^\s*\[\s*\*\s*\]\s*/.test(ln) ||
       /\(\s*correct\s*\)$/i.test(ln) ||
       /\s+-\s*correct\s*$/i.test(ln) ||
@@ -242,12 +239,6 @@ function parseShortAnswer(lines: string[], promptText: string): ParsedItem | nul
     if (!m) continue;
 
     if (/^\s*[a-z]\)\s+/i.test(m[1])) continue;
-
-    // If it is highlighted but not starred, treat as answer as well
-    if (lineHasHighlight(line) && m[1]) {
-      answers.push(m[1].trim());
-      continue;
-    }
 
     answers.push(m[1].trim());
   }

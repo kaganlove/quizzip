@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { openAiConvertToJson } from "../../../lib/openai";
 import { buildQtiZip } from "../../../lib/qtiWrite";
-import { parseStrictQuizText } from "../../../lib/strictQuizParser";
+import { parseStrictQuizText } from "../../../lib/textParser";
 
 function requireEnv(name: string) {
   const v = process.env[name];
@@ -19,13 +19,11 @@ function deepReplaceImageTokens(obj: any, imagesMap: Record<string, string>): an
   if (obj == null) return obj;
 
   if (typeof obj === "string") {
-    // Replace any tokens like __QUIZZIP_IMAGE_TOKEN:abc123__ with actual data URLs
     let s = obj.replace(/__QUIZZIP_IMAGE_TOKEN:([a-zA-Z0-9_-]+)__/g, (match, token) => {
       const dataUrl = imagesMap[token];
       return dataUrl ? dataUrl : match;
     });
 
-    // Replace tokens like quizzip:QUIZZIP_IMAGE_3 with actual data URLs
     s = s.replace(/quizzip:(QUIZZIP_IMAGE_\d+)/g, (match, token) => {
       const dataUrl = imagesMap[token];
       return dataUrl ? dataUrl : match;
@@ -82,7 +80,6 @@ async function getUserEmailFromRequest(req: Request) {
 }
 
 async function decrementCredits(userId: string, amount: number) {
-  // credits table: user_id, credits
   const { data, error } = await supabase
     .from("credits")
     .select("credits")
@@ -92,7 +89,6 @@ async function decrementCredits(userId: string, amount: number) {
   if (error) {
     const msg = (error as any)?.message || String(error);
     if (msg.includes("public.credits") || msg.includes("credits")) {
-      // credits table not present; credits system disabled
       return { ok: true, current: 0, newCredits: 0 };
     }
     throw error;
@@ -126,7 +122,6 @@ async function logConversion(params: {
   finishedAt: string;
   error?: string | null;
 }) {
-  // conversion_logs table: user_id, email, question_count, mode, input_tokens, output_tokens, model, started_at, finished_at, error
   const { error } = await supabase.from("conversion_logs").insert({
     user_id: params.userId,
     email: params.email,
@@ -141,9 +136,97 @@ async function logConversion(params: {
   });
 
   if (error) {
-    // do not throw, logging should not break conversion
     console.error("Failed to log conversion", error);
   }
+}
+
+function stripHighlightMarkup(input: string) {
+  if (!input) return input;
+  let s = input;
+
+  s = s.replace(/<mark\b[^>]*>/gi, "");
+  s = s.replace(/<\/mark>/gi, "");
+
+  s = s.replace(
+    /style\s*=\s*"([^"]*)"/gi,
+    (full, styleText) => {
+      const cleaned = String(styleText)
+        .replace(/background-color\s*:\s*[^;"]+;?/gi, "")
+        .replace(/background\s*:\s*[^;"]+;?/gi, "")
+        .replace(/mso-highlight\s*:\s*[^;"]+;?/gi, "")
+        .replace(/\s{2,}/g, " ")
+        .trim();
+
+      if (!cleaned) return "";
+      return `style="${cleaned}"`;
+    }
+  );
+
+  s = s.replace(/\sbgcolor\s*=\s*"[^"]*"/gi, "");
+
+  return s;
+}
+
+function hasHighlightMarkup(s: string) {
+  const t = String(s ?? "");
+  return /<mark\b/i.test(t) || /background-color\s*:/i.test(t) || /mso-highlight\s*:/i.test(t) || /bgcolor\s*=/i.test(t);
+}
+
+function htmlToPlainText(raw: string) {
+  return String(raw ?? "")
+    .replace(/\r\n/g, "\n")
+    .replace(/\r/g, "\n")
+    .replace(/<br\s*\/?>/gi, "\n")
+    .replace(/<\/p>/gi, "\n")
+    .replace(/<[^>]*>/g, "")
+    .replace(/&nbsp;/gi, " ")
+    .replace(/&amp;/gi, "&")
+    .replace(/&lt;/gi, "<")
+    .replace(/&gt;/gi, ">")
+    .replace(/&quot;/gi, '"')
+    .replace(/&apos;/gi, "'")
+    .trim();
+}
+
+function splitPlainIntoQuestionBlocks(plain: string) {
+  const text = String(plain ?? "").replace(/\r\n/g, "\n").replace(/\r/g, "\n");
+  const lines = text.split("\n");
+
+  const starts: number[] = [];
+  for (let i = 0; i < lines.length; i++) {
+    if (/^\s*\(?\s*\d+\s*[\.\)\:\-]\s+/.test(lines[i])) starts.push(i);
+  }
+  if (starts.length === 0) return [];
+
+  const blocks: string[] = [];
+  for (let si = 0; si < starts.length; si++) {
+    const start = starts[si];
+    const end = si + 1 < starts.length ? starts[si + 1] : lines.length;
+    const slice = lines.slice(start, end);
+
+    while (slice.length && slice[0].trim() === "") slice.shift();
+    while (slice.length && slice[slice.length - 1].trim() === "") slice.pop();
+
+    blocks.push(slice.join("\n"));
+  }
+  return blocks;
+}
+
+function blockHasExplicitCorrectMarker(block: string) {
+  const b = String(block ?? "");
+
+  // Things we count as explicit markers
+  if (/\[\s*\*\s*\]/i.test(b)) return true;
+  if (/\[\s*x\s*\]/i.test(b)) return true;
+  if (/^\s*\*\s*\(?\s*[a-d]\s*[\)\.\:\-]/gim.test(b)) return true;
+  if (/\(\s*correct\s*\)/i.test(b)) return true;
+  if (/(^|\n)\s*correct\s*(answer|answers)?(?:\s*\([^)]*\))?\s*[:=\-]/gim.test(b)) return true;
+  if (/(^|\n)\s*answer(?:\s*\([^)]*\))?\s*[:=\-]/gim.test(b)) return true;
+
+  // If the author wrote "The correct answer is choice C" treat as explicit too
+  if (/the\s+correct\s+answer\s+is\s+choice\s+[a-d]/i.test(b)) return true;
+
+  return false;
 }
 
 export async function POST(req: Request) {
@@ -164,7 +247,6 @@ export async function POST(req: Request) {
     const doReview = Boolean(body?.do_review) || body?.mode === "ai+review";
     const clientTitle = typeof body?.title === "string" ? body.title.trim() : "";
 
-    // UPDATED: accept either imagesMap OR images (array of {id,src})
     const imagesMap =
       body?.imagesMap && typeof body.imagesMap === "object"
         ? body.imagesMap
@@ -185,14 +267,21 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Missing raw quiz text." }, { status: 400 });
     }
 
-    // Parse strict version for question count and explicit structure (best effort only)
+    // Strict parse for per question evidence when possible
     const strict = parseStrictQuizText(raw);
     const strictItems = strict.quiz?.items ?? [];
     questionCount = strictItems.length;
 
-    // Do NOT hard fail if strict parser finds 0, because HTML input often fails strict parsing.
+    // Per question evidence from plain text blocks
+    const plain = htmlToPlainText(raw);
+    const plainBlocks = splitPlainIntoQuestionBlocks(plain);
+    const blockEvidence = plainBlocks.map((b) => blockHasExplicitCorrectMarker(b));
 
-    // Cost model: 1 credit per conversion (regardless of question count for now)
+    // Per question evidence from strict parse (choice.correct flags)
+    const strictEvidence = strictItems.map((it: any) =>
+      Array.isArray(it?.choices) ? it.choices.some((c: any) => Boolean(c?.correct)) : false
+    );
+
     if (userId) {
       const { ok, current } = await decrementCredits(userId, 1);
       if (!ok) {
@@ -200,7 +289,6 @@ export async function POST(req: Request) {
       }
     }
 
-    // Convert using OpenAI (updated signature)
     const convert = await openAiConvertToJson({
       raw,
       mode: "convert",
@@ -216,7 +304,6 @@ export async function POST(req: Request) {
 
     let final: any = convert.data;
 
-    // Guard rails if the model returned string JSON instead of object
     if (typeof final === "string") {
       const parsed = safeJsonParse(final);
       if (parsed) final = parsed;
@@ -226,12 +313,10 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Invalid conversion output." }, { status: 500 });
     }
 
-    // In some cases, wrap might exist
     if (final.quiz && typeof final.quiz === "object") {
       final = final.quiz;
     }
 
-    // Normalize items key
     if (!Array.isArray(final.items) && Array.isArray(final.questions)) {
       final.items = final.questions;
       delete (final as any).questions;
@@ -241,12 +326,10 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Conversion output missing items." }, { status: 500 });
     }
 
-    // Ensure title exists
     if (!final.title || typeof final.title !== "string") {
       final.title = clientTitle || "Converted Quiz";
     }
 
-    // Review pass when requested (updated signature, review expects JSON input)
     let reviewUsage = { input_tokens: 0, output_tokens: 0 };
     if (doReview) {
       const review = await openAiConvertToJson({
@@ -259,97 +342,93 @@ export async function POST(req: Request) {
       }
     }
 
-    // If strict parsing detected items and count mismatched, do one cleanup review
-    if (strictItems.length > 0 && final.items.length !== strictItems.length) {
-      const review2 = await openAiConvertToJson({
-        raw: JSON.stringify(final),
-        mode: "review",
-      });
-      if (review2?.data) {
-        final = review2.data as any;
-        reviewUsage = {
-          input_tokens: (reviewUsage?.input_tokens ?? 0) + (review2.usage?.input_tokens ?? 0),
-          output_tokens: (reviewUsage?.output_tokens ?? 0) + (review2.usage?.output_tokens ?? 0),
-        };
-      }
-    }
-
-    // Detect whether the raw input contains explicit correct answer markers.
-    const rawText = String(raw ?? "");
-    const rawHasExplicitCorrectMarkers =
-      /\[\s*\*\s*\]/i.test(rawText) ||
-      /\[\s*x\s*\]/i.test(rawText) ||
-      /^\s*\*\s*\(?\s*[a-d]\s*[\)\.\:\-]/gim.test(rawText) ||
-      /<mark\b/i.test(rawText) ||
-      /background-color\s*:/i.test(rawText) ||
-      /background\s*:/i.test(rawText) ||
-      /bgcolor\s*=/i.test(rawText) ||
-      /\(\s*correct\s*\)/i.test(rawText) ||
-      /^\s*correct\s*(answer|answers)?\s*[:\-]/gim.test(rawText) ||
-      /^\s*answer\s*[:\-]/gim.test(rawText);
-
-    // Keep correct answers only when explicitly marked
-    const explicitCorrectFlags = strict.quiz?.items?.map((it: any) =>
-      Array.isArray(it?.choices) ? it.choices.some((c: any) => Boolean(c?.correct)) : false
-    );
-
-    const finalItems: any[] = Array.isArray(final?.items)
-      ? final.items
-      : Array.isArray(final?.questions)
-        ? final.questions
-        : [];
-
-    for (let i = 0; i < finalItems.length; i++) {
-      const keep =
-        (explicitCorrectFlags ? Boolean(explicitCorrectFlags[i]) : false) ||
-        rawHasExplicitCorrectMarkers;
-
-      if (!keep) {
-        finalItems[i].correctChoiceIds = [];
-        if (Array.isArray(finalItems[i].choices)) {
-          finalItems[i].choices = finalItems[i].choices.map((c: any) => ({ ...c, correct: false }));
-        }
-      }
-    }
-
-    if (Array.isArray(final?.items)) final.items = finalItems;
-    if (Array.isArray(final?.questions)) final.questions = finalItems;
-
     // Apply client chosen title last so it always wins
     if (clientTitle) {
       final.title = clientTitle;
     }
 
-    // Restore any quizzip image tokens to real data URLs before generating QTI
+    // Restore any quizzip image tokens before generating QTI
     if (imagesMap && Object.keys(imagesMap).length > 0) {
       final = deepReplaceImageTokens(final, imagesMap);
     }
 
-    const items = final.items ?? [];
-    questionCount = items.length;
+    const finalItems: any[] = Array.isArray(final?.items) ? final.items : [];
+    questionCount = finalItems.length;
 
-    // Validate after conversion. Accept promptText too.
+    for (let i = 0; i < finalItems.length; i++) {
+      const it = finalItems[i];
+      if (!it || typeof it !== "object") continue;
+
+      // Evidence for this question
+      const hasStrict = Boolean(strictEvidence[i]);
+      const hasBlock = Boolean(blockEvidence[i]);
+
+      // Also count highlight inside model output as explicit evidence
+      const choicesArr: any[] = Array.isArray(it.choices) ? it.choices : [];
+      const highlightHits: string[] = [];
+
+      for (let c = 0; c < choicesArr.length; c++) {
+        const ch = choicesArr[c];
+        const html = String(ch?.html ?? ch?.text ?? "");
+        if (hasHighlightMarkup(html)) {
+          highlightHits.push(String(ch?.id ?? ""));
+          // Strip highlight out of the stored html or text
+          if (typeof ch?.html === "string") ch.html = stripHighlightMarkup(ch.html);
+          if (typeof ch?.text === "string") ch.text = stripHighlightMarkup(ch.text);
+        } else {
+          // Still strip highlight if any slipped into prompt or choice
+          if (typeof ch?.html === "string") ch.html = stripHighlightMarkup(ch.html);
+          if (typeof ch?.text === "string") ch.text = stripHighlightMarkup(ch.text);
+        }
+      }
+
+      if (typeof it.promptHtml === "string") it.promptHtml = stripHighlightMarkup(it.promptHtml);
+      if (typeof it.promptText === "string") it.promptText = stripHighlightMarkup(it.promptText);
+      if (typeof it.prompt === "string") it.prompt = stripHighlightMarkup(it.prompt);
+
+      const hasChoiceHighlight = highlightHits.length > 0;
+
+      const keepCorrect = hasStrict || hasBlock || hasChoiceHighlight;
+
+      if (hasChoiceHighlight) {
+        // Force correctChoiceIds from highlighted choices
+        const unique = Array.from(new Set(highlightHits.filter(Boolean)));
+        it.correctChoiceIds = unique;
+
+        // Keep a consistent shape for any downstream normalizers
+        if (Array.isArray(it.choices)) {
+          it.choices = it.choices.map((c: any) => ({
+            ...c,
+            correct: unique.includes(String(c?.id ?? "")),
+          }));
+        }
+      }
+
+      if (!keepCorrect) {
+        it.correctChoiceIds = [];
+        if (Array.isArray(it.choices)) {
+          it.choices = it.choices.map((c: any) => ({ ...c, correct: false }));
+        }
+      }
+    }
+
     if (
-      !Array.isArray(items) ||
-      items.length < 1 ||
-      !items.every(
+      !Array.isArray(finalItems) ||
+      finalItems.length < 1 ||
+      !finalItems.every(
         (it: any) =>
           it &&
           typeof it === "object" &&
-          (typeof it.prompt === "string" ||
-            typeof it.promptText === "string" ||
-            typeof it.promptHtml === "string")
+          (typeof it.prompt === "string" || typeof it.promptText === "string" || typeof it.promptHtml === "string")
       )
     ) {
       return NextResponse.json({ error: "Invalid question items in conversion output." }, { status: 500 });
     }
 
-    // Build QTI zip
     const zip = await buildQtiZip(final);
 
     const finishedAt = toIso(new Date());
 
-    // Log conversion
     await logConversion({
       userId,
       email,
