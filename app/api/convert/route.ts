@@ -295,6 +295,9 @@ export async function POST(req: Request) {
       Array.isArray(it?.choices) ? it.choices.some((c: any) => Boolean(c?.correct)) : false
     );
 
+    // EDIT 1: add this line
+    const hasAnyExplicitCorrectFlags = Array.isArray(explicitCorrectFlags) && explicitCorrectFlags.some(Boolean);
+
     const finalItems: any[] = Array.isArray(final?.items)
       ? final.items
       : Array.isArray(final?.questions)
@@ -302,9 +305,10 @@ export async function POST(req: Request) {
         : [];
 
     for (let i = 0; i < finalItems.length; i++) {
-      const keep =
-        (explicitCorrectFlags ? Boolean(explicitCorrectFlags[i]) : false) ||
-        rawHasExplicitCorrectMarkers;
+      // EDIT 2: replace keep logic with this
+      const keep = hasAnyExplicitCorrectFlags
+        ? Boolean(explicitCorrectFlags?.[i])
+        : rawHasExplicitCorrectMarkers;
 
       if (!keep) {
         finalItems[i].correctChoiceIds = [];

@@ -68,6 +68,7 @@ export async function openAiConvertToJson(args: {
     "3) Keep img attributes, especially src, exactly as provided. Do not remove quizzip: tokens.",
     "4) Do not invent new image tokens. Do not rename them.",
     "5) Output raw HTML inside JSON strings. Do not escape tags into entities.",
+    "6) Preserve span class attributes exactly when present (for example ql-bg-yellow).",
     "",
     "Interpret these common authoring conventions:",
     "1) Multiple choice single: a) b) c) lines, exactly one correct marked with a leading asterisk like *c). When a choice is marked correct, remove the asterisk from the choice text.",
@@ -84,7 +85,7 @@ export async function openAiConvertToJson(args: {
     "Correct answer rules:",
     "A) Never guess or infer a correct answer from general knowledge, semantics, probability, or context.",
     "B) Only mark a choice as correct when the input explicitly denotes it.",
-    "C) Explicit denotations include: a leading asterisk before the option label, bracket markers like [*] or [x], highlight markup on the option text such as <mark>...</mark> or a span with a background-color or background style, or explicit key lines like 'Correct: B' and entries in an 'Answer Key' section.",
+    "C) Explicit denotations include: a leading asterisk before the option label, bracket markers like [*] or [x], or highlight markup on the option text such as <mark>...</mark>, a span with a background-color or background style, OR Quill highlight classes like <span class=\"ql-bg-yellow\">...</span>.",
     "D) If no explicit denotation is present for a question, leave all choices with correct:false and do not invent a correctText.",
   ].join("\n");
 

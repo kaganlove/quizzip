@@ -1,315 +1,434 @@
-export type ParsedItem = {
-  type:
-    | "multiple_choice_single"
-    | "multiple_choice_multiple"
-    | "true_false"
-    | "short_answer"
-    | "essay"
-    | "file_upload";
-  promptText: string;
-  choices?: Array<{ text: string; correct?: boolean }>;
-  correctText?: string;
-};
+import { NextResponse } from "next/server";
+import { createClient } from "@supabase/supabase-js";
+import { openAiConvertToJson } from "../../../lib/openai";
+import { buildQtiZip } from "../../../lib/qtiWrite";
+import { parseStrictQuizText } from "../../../lib/textParser";
 
-type ParsedChoice = { text: string; correct?: boolean };
+function requireEnv(name: string) {
+  const v = process.env[name];
+  if (!v) throw new Error(`Missing env var: ${name}`);
+  return v;
+}
 
-export type ParsedQuiz = {
-  title?: string;
-  items: ParsedItem[];
-};
+const supabaseUrl = requireEnv("NEXT_PUBLIC_SUPABASE_URL");
+const supabaseServiceRoleKey = requireEnv("SUPABASE_SERVICE_ROLE_KEY");
 
-function extractAnswerLetters(line: string): string[] {
-  const s = (line ?? "").trim();
-  if (!s) return [];
+const supabase = createClient(supabaseUrl, supabaseServiceRoleKey);
 
-  // Common patterns we support:
-  // "Correct: C", "Correct C (14)", "Answer: A"
-  // "Correct answers: a, b, c"
-  // "Correct = .zip (option b)"
-  const m = s.match(/^(?:correct\s*answers?|correct\s*answer|correct|answer)\s*[:=]?\s*(.+)$/i);
-  const tail = (m ? m[1] : s).trim();
+function deepReplaceImageTokens(obj: any, imagesMap: Record<string, string>): any {
+  if (obj == null) return obj;
 
-  const found: string[] = [];
+  if (typeof obj === "string") {
+    // Replace any tokens like __QUIZZIP_IMAGE_TOKEN:abc123__ with actual data URLs
+    let s = obj.replace(/__QUIZZIP_IMAGE_TOKEN:([a-zA-Z0-9_-]+)__/g, (match, token) => {
+      const dataUrl = imagesMap[token];
+      return dataUrl ? dataUrl : match;
+    });
 
-  // Prefer explicit "option X" if present
-  for (const opt of tail.matchAll(/\boption\s*([a-d])\b/gi)) {
-    found.push((opt[1] ?? "").toUpperCase());
+    // Replace tokens like quizzip:QUIZZIP_IMAGE_3 with actual data URLs
+    s = s.replace(/quizzip:(QUIZZIP_IMAGE_\d+)/g, (match, token) => {
+      const dataUrl = imagesMap[token];
+      return dataUrl ? dataUrl : match;
+    });
+
+    return s;
   }
 
-  // Otherwise pick single letter tokens A to D
-  for (const mm of tail.matchAll(/\b([a-d])\b/gi)) {
-    found.push((mm[1] ?? "").toUpperCase());
+  if (Array.isArray(obj)) {
+    return obj.map((v) => deepReplaceImageTokens(v, imagesMap));
   }
 
-  // De dupe
-  return Array.from(new Set(found)).filter((x) => /^[A-D]$/.test(x));
-}
-
-function extractTrueFalseAnswer(line: string): "true" | "false" | null {
-  const s = (line ?? "").trim();
-  if (!s) return null;
-
-  const m = s.match(/^(?:correct|answer)\s*[:=]?\s*(true|false)\b/i);
-  if (!m) return null;
-  return m[1].toLowerCase() === "true" ? "true" : "false";
-}
-
-function looksLikeAnswerKeyLine(line: string) {
-  return /^(?:\s*(?:correct\s*answers?|correct\s*answer|correct|answer)\b)/i.test(line ?? "");
-}
-
-function normLines(raw: string) {
-  return raw.replace(/\r\n/g, "\n").replace(/\r/g, "\n");
-}
-
-function stripNumPrefix(line: string) {
-  // Accept: 12. , 12) , (12) , 12: , 12 -
-  return line.replace(/^\s*\(?\s*\d+\s*[\.\)\:\-]\s+/, "").trim();
-}
-
-function isBlank(line: string) {
-  return line.trim().length === 0;
-}
-
-function looksLikeQuestionStart(line: string) {
-  // Accept: 12. , 12) , (12) , 12: , 12 -
-  return /^\s*\(?\s*\d+\s*[\.\)\:\-]\s+/.test(line);
-}
-
-function splitIntoQuestionBlocks(raw: string) {
-  const text = normLines(raw);
-  const lines = text.split("\n");
-
-  const starts: number[] = [];
-  for (let i = 0; i < lines.length; i++) {
-    if (looksLikeQuestionStart(lines[i])) starts.push(i);
+  if (typeof obj === "object") {
+    const out: any = {};
+    for (const k of Object.keys(obj)) {
+      out[k] = deepReplaceImageTokens(obj[k], imagesMap);
+    }
+    return out;
   }
 
-  if (starts.length === 0) return [];
+  return obj;
+}
 
-  const blocks: string[] = [];
-  for (let si = 0; si < starts.length; si++) {
-    const start = starts[si];
-    const end = si + 1 < starts.length ? starts[si + 1] : lines.length;
-    const slice = lines.slice(start, end);
+function toIso(dt: Date) {
+  return dt.toISOString().replace(/\.\d{3}Z$/, "Z");
+}
 
-    while (slice.length && isBlank(slice[0])) slice.shift();
-    while (slice.length && isBlank(slice[slice.length - 1])) slice.pop();
-
-    blocks.push(slice.join("\n"));
+function safeJsonParse(s: string) {
+  try {
+    return JSON.parse(s);
+  } catch {
+    return null;
   }
-  return blocks;
 }
 
-function stripChoiceLabel(text: string) {
-  const s = (text ?? "").trim();
+async function getUserIdFromRequest(req: Request) {
+  const authHeader = req.headers.get("authorization") || "";
+  const token = authHeader.startsWith("Bearer ") ? authHeader.slice(7) : "";
+  if (!token) return null;
 
-  // Remove common leading choice labels from the captured text
-  // Example: "B. Process" or "b) Process" or "(C): Process"
-  return s.replace(/^\s*\(?\s*[A-D]\s*[\)\.\:\-]\s+/i, "").trim();
+  const { data, error } = await supabase.auth.getUser(token);
+  if (error || !data?.user?.id) return null;
+  return data.user.id;
 }
 
-function parseBracketMulti(lines: string[], promptText: string): ParsedItem | null {
-  // Bracketed choices:
-  // [ ] Option
-  // [*] Option
-  const optionRe = /^\s*\[(\*?)\]\s+(.*\S)\s*$/;
+async function getUserEmailFromRequest(req: Request) {
+  const authHeader = req.headers.get("authorization") || "";
+  const token = authHeader.startsWith("Bearer ") ? authHeader.slice(7) : "";
+  if (!token) return null;
 
-  const choices: ParsedChoice[] = [];
-  let answerLetters: string[] = [];
-  let tfAnswer: "true" | "false" | null = null;
+  const { data, error } = await supabase.auth.getUser(token);
+  if (error || !data?.user?.email) return null;
+  return data.user.email;
+}
 
-  for (const ln of lines) {
-    // Allow answer key lines inside the block (ex: "Correct: C")
-    if (looksLikeAnswerKeyLine(ln)) {
-      answerLetters = answerLetters.length ? answerLetters : extractAnswerLetters(ln);
-      tfAnswer = tfAnswer ?? extractTrueFalseAnswer(ln);
-      continue;
+async function decrementCredits(userId: string, amount: number) {
+  // credits table: user_id, credits
+  const { data, error } = await supabase.from("credits").select("credits").eq("user_id", userId).maybeSingle();
+
+  if (error) {
+    const msg = (error as any)?.message || String(error);
+    if (msg.includes("public.credits") || msg.includes("credits")) {
+      // credits table not present; credits system disabled
+      return { ok: true, current: 0, newCredits: 0 };
+    }
+    throw error;
+  }
+
+  const current = data?.credits ?? 0;
+  if (current < amount) {
+    return { ok: false, current };
+  }
+
+  const newCredits = current - amount;
+
+  const { error: updateError } = await supabase
+    .from("credits")
+    .upsert({ user_id: userId, credits: newCredits }, { onConflict: "user_id" });
+
+  if (updateError) throw updateError;
+
+  return { ok: true, current, newCredits };
+}
+
+async function logConversion(params: {
+  userId: string | null;
+  email: string | null;
+  questionCount: number;
+  mode: string;
+  inputTokens?: number;
+  outputTokens?: number;
+  model?: string;
+  startedAt: string;
+  finishedAt: string;
+  error?: string | null;
+}) {
+  // conversion_logs table: user_id, email, question_count, mode, input_tokens, output_tokens, model, started_at, finished_at, error
+  const { error } = await supabase.from("conversion_logs").insert({
+    user_id: params.userId,
+    email: params.email,
+    question_count: params.questionCount,
+    mode: params.mode,
+    input_tokens: params.inputTokens ?? null,
+    output_tokens: params.outputTokens ?? null,
+    model: params.model ?? null,
+    started_at: params.startedAt,
+    finished_at: params.finishedAt,
+    error: params.error ?? null,
+  });
+
+  if (error) {
+    // do not throw, logging should not break conversion
+    console.error("Failed to log conversion", error);
+  }
+}
+
+/**
+ * Explicit correct markers inside HTML/text that we consider valid:
+ * - [*] or [x]
+ * - <mark>...</mark>
+ * - inline style background-color or background
+ * - bgcolor attribute
+ * - Quill highlight classes like ql-bg-yellow
+ */
+function hasExplicitCorrectMarkerInChoiceText(s: string) {
+  const t = String(s ?? "");
+  return (
+    /\[\s*\*\s*\]/i.test(t) ||
+    /\[\s*x\s*\]/i.test(t) ||
+    /<mark\b/i.test(t) ||
+    /background-color\s*:/i.test(t) ||
+    /background\s*:/i.test(t) ||
+    /bgcolor\s*=/i.test(t) ||
+    /\bql-bg-[a-z0-9_-]+\b/i.test(t) ||
+    /\bql-highlight\b/i.test(t)
+  );
+}
+
+export async function POST(req: Request) {
+  const startedAt = toIso(new Date());
+
+  let userId: string | null = null;
+  let email: string | null = null;
+  let questionCount = 0;
+  let mode = "unknown";
+  let model: string | undefined;
+  let inputTokens: number | undefined;
+  let outputTokens: number | undefined;
+
+  try {
+    const body = await req.json().catch(() => ({}));
+    const raw = body?.raw;
+
+    const doReview = Boolean(body?.do_review) || body?.mode === "ai+review";
+    const clientTitle = typeof body?.title === "string" ? body.title.trim() : "";
+
+    // accept either imagesMap OR images (array of {id,src})
+    const imagesMap =
+      body?.imagesMap && typeof body.imagesMap === "object"
+        ? body.imagesMap
+        : Array.isArray(body?.images)
+          ? Object.fromEntries(
+              body.images
+                .filter((img: any) => img && typeof img.id === "string" && typeof img.src === "string")
+                .map((img: any) => [img.id, img.src])
+            )
+          : null;
+
+    mode = doReview ? "ai+review" : "ai";
+
+    userId = await getUserIdFromRequest(req);
+    email = await getUserEmailFromRequest(req);
+
+    if (!raw || typeof raw !== "string") {
+      return NextResponse.json({ error: "Missing raw quiz text." }, { status: 400 });
     }
 
-    const m = ln.match(optionRe);
-    if (!m) return null;
-    choices.push({ text: m[2], correct: Boolean(m[1]) });
-  }
+    // Parse strict version for question count and explicit structure (best effort only)
+    const strict = parseStrictQuizText(raw);
+    const strictItems = strict.quiz?.items ?? [];
+    questionCount = strictItems.length;
 
-  // If none are marked in brackets, use an explicit answer key line if present
-  if (choices.every((c) => !c.correct)) {
-    if (tfAnswer) {
-      for (const c of choices) {
-        if (c.text.trim().toLowerCase() === tfAnswer) c.correct = true;
-      }
-    } else if (answerLetters.length) {
-      for (const L of answerLetters) {
-        const idx = L.charCodeAt(0) - 65; // A = 0
-        if (idx >= 0 && idx < choices.length) choices[idx].correct = true;
-      }
-    }
-  }
-
-  const correctCount = choices.filter((c) => c.correct).length;
-
-  // If none are marked, keep the question but leave correct blank
-  if (correctCount === 0) {
-    return { type: "multiple_choice_single", promptText, choices };
-  }
-
-  // If more than one marked, treat as multiple answers
-  if (correctCount > 1) {
-    return { type: "multiple_choice_multiple", promptText, choices };
-  }
-
-  // Exactly one marked, treat as single answer multiple choice
-  return { type: "multiple_choice_single", promptText, choices };
-}
-
-function parseStarredAlphaChoices(lines: string[], promptText: string): ParsedItem | null {
-  // Multiple choice single and True or False
-  // a) 1
-  // *b) 2
-  // Also allow: "B. Text", "* B. Text", "(A): Text", "A - Text"
-  const re = /^\s*(\*)?\s*\(?\s*([a-d])\s*[\)\.\:\-]\s+(.*\S)\s*$/i;
-
-  const choices: ParsedChoice[] = [];
-  let answerLetters: string[] = [];
-  let tfAnswer: "true" | "false" | null = null;
-
-  for (const ln of lines) {
-    // Allow answer key lines inside the block (ex: "Correct answers: a, c")
-    if (looksLikeAnswerKeyLine(ln)) {
-      if (!answerLetters.length) answerLetters = extractAnswerLetters(ln);
-      tfAnswer = tfAnswer ?? extractTrueFalseAnswer(ln);
-      continue;
-    }
-
-    // True or False special case
-    const tf = ln.trim();
-    if (/^\*?\s*(true|false)\s*$/i.test(tf)) {
-      const isCorrect = /^\*/.test(tf);
-      const text = tf.replace(/^\*\s*/, "");
-      choices.push({ text, correct: isCorrect });
-      continue;
-    }
-
-    const m = ln.match(re);
-    if (!m) return null;
-
-    const text = stripChoiceLabel(m[3]);
-    const isCorrect =
-      Boolean(m[1]) ||
-      /^\s*\[\s*\*\s*\]\s*/.test(ln) ||
-      /\(\s*correct\s*\)$/i.test(ln) ||
-      /\s+-\s*correct\s*$/i.test(ln) ||
-      /\s+correct\s*$/i.test(ln) ||
-      /\s+\u2713\s*$/i.test(ln);
-
-    choices.push({ text, correct: isCorrect });
-  }
-
-  // If no inline markers were found, use an explicit answer key line if present
-  if (choices.every((c) => !c.correct)) {
-    if (tfAnswer) {
-      for (const c of choices) {
-        if (c.text.trim().toLowerCase() === tfAnswer) c.correct = true;
-      }
-    } else if (answerLetters.length) {
-      for (const L of answerLetters) {
-        const idx = L.charCodeAt(0) - 65; // A = 0
-        if (idx >= 0 && idx < choices.length) choices[idx].correct = true;
+    // Cost model: 1 credit per conversion
+    if (userId) {
+      const { ok, current } = await decrementCredits(userId, 1);
+      if (!ok) {
+        return NextResponse.json({ error: "Not enough credits.", credits: current ?? 0 }, { status: 402 });
       }
     }
+
+    // Convert using OpenAI
+    const convert = await openAiConvertToJson({
+      raw,
+      mode: "convert",
+    });
+
+    model = process.env.OPENAI_MODEL || "gpt-4o-mini";
+    inputTokens = convert.usage?.input_tokens;
+    outputTokens = convert.usage?.output_tokens;
+
+    if (!convert?.data) {
+      return NextResponse.json({ error: "Conversion failed." }, { status: 500 });
+    }
+
+    let final: any = convert.data;
+
+    // Guard rails if the model returned string JSON instead of object
+    if (typeof final === "string") {
+      const parsed = safeJsonParse(final);
+      if (parsed) final = parsed;
+    }
+
+    if (!final || typeof final !== "object") {
+      return NextResponse.json({ error: "Invalid conversion output." }, { status: 500 });
+    }
+
+    // In some cases, wrap might exist
+    if (final.quiz && typeof final.quiz === "object") {
+      final = final.quiz;
+    }
+
+    // Normalize items key
+    if (!Array.isArray(final.items) && Array.isArray(final.questions)) {
+      final.items = final.questions;
+      delete (final as any).questions;
+    }
+
+    if (!Array.isArray(final.items)) {
+      return NextResponse.json({ error: "Conversion output missing items." }, { status: 500 });
+    }
+
+    // Ensure title exists
+    if (!final.title || typeof final.title !== "string") {
+      final.title = clientTitle || "Converted Quiz";
+    }
+
+    // Review pass when requested
+    let reviewUsage = { input_tokens: 0, output_tokens: 0 };
+    if (doReview) {
+      const review = await openAiConvertToJson({
+        raw: JSON.stringify(final),
+        mode: "review",
+      });
+      if (review?.data) {
+        final = review.data as any;
+        reviewUsage = review.usage ?? reviewUsage;
+      }
+    }
+
+    // If strict parsing detected items and count mismatched, do one cleanup review
+    if (strictItems.length > 0 && final.items.length !== strictItems.length) {
+      const review2 = await openAiConvertToJson({
+        raw: JSON.stringify(final),
+        mode: "review",
+      });
+      if (review2?.data) {
+        final = review2.data as any;
+        reviewUsage = {
+          input_tokens: (reviewUsage?.input_tokens ?? 0) + (review2.usage?.input_tokens ?? 0),
+          output_tokens: (reviewUsage?.output_tokens ?? 0) + (review2.usage?.output_tokens ?? 0),
+        };
+      }
+    }
+
+    // Detect whether the raw input contains explicit correct-answer markers.
+    const rawText = String(raw ?? "");
+    const rawHasExplicitCorrectMarkers =
+      /\[\s*\*\s*\]/i.test(rawText) || // [*]
+      /\[\s*x\s*\]/i.test(rawText) || // [x]
+      /^\s*\*\s*\(?\s*[a-d]\s*[\)\.\:\-]/gim.test(rawText) || // *b) or *B.
+      /<mark\b/i.test(rawText) || // <mark>...</mark>
+      /background-color\s*:/i.test(rawText) || // inline highlight style
+      /background\s*:/i.test(rawText) || // Word and some HTML exports use background:
+      /bgcolor\s*=/i.test(rawText) || // legacy html highlight
+      /\bql-bg-[a-z0-9_-]+\b/i.test(rawText) || // Quill highlight classes
+      /\bql-highlight\b/i.test(rawText) || // generic class
+      /\(\s*correct\s*\)/i.test(rawText) || // (correct)
+      /^\s*correct\s*(answer|answers)?\s*[:\-]/gim.test(rawText) || // Correct answer:
+      /^\s*answer\s*[:\-]/gim.test(rawText); // Answer:
+
+    // Do not guess correct answers.
+    // Keep correct answers only when they were explicitly marked in the original strict parse.
+    const explicitCorrectFlags = strict.quiz?.items?.map((it: any) =>
+      Array.isArray(it?.choices) ? it.choices.some((c: any) => Boolean(c?.correct)) : false
+    );
+
+    const finalItems: any[] = Array.isArray(final?.items) ? final.items : Array.isArray(final?.questions) ? final.questions : [];
+
+    for (let i = 0; i < finalItems.length; i++) {
+      const keep =
+        (explicitCorrectFlags ? Boolean(explicitCorrectFlags[i]) : false) ||
+        rawHasExplicitCorrectMarkers;
+
+      if (!keep) {
+        finalItems[i].correctChoiceIds = [];
+        if (Array.isArray(finalItems[i].choices)) {
+          finalItems[i].choices = finalItems[i].choices.map((c: any) => ({ ...c, correct: false }));
+        }
+        continue;
+      }
+
+      // If we ARE keeping, but the model failed to set any correct flags,
+      // then mark correct choices based on explicit highlight/marker markup inside the choice text.
+      const choices = Array.isArray(finalItems[i]?.choices) ? finalItems[i].choices : null;
+      const hasAnyCorrectAlready =
+        (Array.isArray(finalItems[i]?.correctChoiceIds) && finalItems[i].correctChoiceIds.length > 0) ||
+        (choices ? choices.some((c: any) => Boolean(c?.correct)) : false);
+
+      if (choices && !hasAnyCorrectAlready) {
+        const detectedIds: string[] = [];
+        for (let j = 0; j < choices.length; j++) {
+          const c = choices[j];
+          const txt = String(c?.text ?? "");
+          if (hasExplicitCorrectMarkerInChoiceText(txt)) {
+            detectedIds.push(String.fromCharCode(65 + j)); // A, B, C...
+          }
+        }
+
+        if (detectedIds.length) {
+          finalItems[i].correctChoiceIds = detectedIds;
+          finalItems[i].choices = choices.map((c: any, j: number) => ({
+            ...c,
+            correct: detectedIds.includes(String.fromCharCode(65 + j)),
+          }));
+        }
+      }
+    }
+
+    if (Array.isArray(final?.items)) final.items = finalItems;
+    if (Array.isArray(final?.questions)) final.questions = finalItems;
+
+    // Apply client chosen title last so it always wins
+    if (clientTitle) {
+      final.title = clientTitle;
+    }
+
+    // Restore any quizzip image tokens to real data URLs before generating QTI
+    if (imagesMap && Object.keys(imagesMap).length > 0) {
+      final = deepReplaceImageTokens(final, imagesMap);
+    }
+
+    const items = final.items ?? [];
+    questionCount = items.length;
+
+    // Validate after conversion. Accept promptText too.
+    if (
+      !Array.isArray(items) ||
+      items.length < 1 ||
+      !items.every(
+        (it: any) =>
+          it &&
+          typeof it === "object" &&
+          (typeof it.prompt === "string" ||
+            typeof it.promptText === "string" ||
+            typeof it.promptHtml === "string")
+      )
+    ) {
+      return NextResponse.json({ error: "Invalid question items in conversion output." }, { status: 500 });
+    }
+
+    // Build QTI zip
+    const zip = await buildQtiZip(final);
+
+    const finishedAt = toIso(new Date());
+
+    // Log conversion
+    await logConversion({
+      userId,
+      email,
+      questionCount,
+      mode,
+      inputTokens: (inputTokens ?? 0) + (reviewUsage?.input_tokens ?? 0),
+      outputTokens: (outputTokens ?? 0) + (reviewUsage?.output_tokens ?? 0),
+      model,
+      startedAt,
+      finishedAt,
+      error: null,
+    });
+
+    return new NextResponse(zip, {
+      status: 200,
+      headers: {
+        "Content-Type": "application/zip",
+        "Content-Disposition": 'attachment; filename="quizzip_export.zip"',
+      },
+    });
+  } catch (err: any) {
+    const finishedAt = toIso(new Date());
+    const message = err?.message || "Unknown error";
+
+    await logConversion({
+      userId,
+      email,
+      questionCount,
+      mode,
+      inputTokens,
+      outputTokens,
+      model,
+      startedAt,
+      finishedAt,
+      error: message,
+    });
+
+    return NextResponse.json({ error: message }, { status: 500 });
   }
-
-  const correctCount = choices.filter((c) => c.correct).length;
-
-  // If none are marked, keep the question but leave correct blank
-  if (correctCount === 0) {
-    const isTf = choices.length === 2 && choices.every((c) => /^(true|false)$/i.test(c.text.trim()));
-    return { type: isTf ? "true_false" : "multiple_choice_single", promptText, choices };
-  }
-
-  // If more than one is marked, treat as multiple answers
-  if (correctCount > 1) {
-    return { type: "multiple_choice_multiple", promptText, choices };
-  }
-
-  // Exactly one marked, treat as single answer multiple choice or TF
-  const isTf = choices.length === 2 && choices.every((c) => /^(true|false)$/i.test(c.text.trim()));
-  return { type: isTf ? "true_false" : "multiple_choice_single", promptText, choices };
-}
-
-function parseShortAnswer(lines: string[], promptText: string): ParsedItem | null {
-  const re = /^\s*\*\s+(.*\S)\s*$/;
-
-  const answers: string[] = [];
-  for (const line of lines) {
-    const m = re.exec(line);
-    if (!m) continue;
-
-    if (/^\s*[a-z]\)\s+/i.test(m[1])) continue;
-
-    answers.push(m[1].trim());
-  }
-
-  if (answers.length === 0) return null;
-
-  return {
-    type: "short_answer",
-    promptText,
-    correctText: answers.join("\n"),
-  };
-}
-
-function parseEssayOrFile(lines: string[], promptText: string): ParsedItem | null {
-  const hasEssayMarker = lines.some((l) => /^\s*#{3,4}\s*$/.test(l));
-  if (hasEssayMarker) {
-    return { type: "essay", promptText };
-  }
-
-  const hasFileMarker = lines.some((l) => /^\s*\^{3,4}\s*$/.test(l));
-  if (hasFileMarker) {
-    return { type: "file_upload", promptText };
-  }
-
-  return null;
-}
-
-function parseOneBlock(block: string): ParsedItem | null {
-  const lines = normLines(block).split("\n");
-
-  const first = lines[0] ?? "";
-  if (!looksLikeQuestionStart(first)) return null;
-
-  const promptFirstLine = stripNumPrefix(first);
-  const rest = lines.slice(1).filter((l) => !isBlank(l));
-
-  const ef = parseEssayOrFile(rest, promptFirstLine);
-  if (ef) return ef;
-
-  const multi = parseBracketMulti(rest, promptFirstLine);
-  if (multi) return multi;
-
-  const mc = parseStarredAlphaChoices(rest, promptFirstLine);
-  if (mc) return mc;
-
-  const sa = parseShortAnswer(rest, promptFirstLine);
-  if (sa) return sa;
-
-  // Minimal fallback: keep the question instead of dropping it.
-  // This preserves things like matching or table questions (ex: your Question 6).
-  const combined = [promptFirstLine, ...rest].join("\n").trim();
-  return { type: "essay", promptText: combined };
-}
-
-export function parseStrictQuizText(raw: string): { quiz: ParsedQuiz | null; reason?: string } {
-  const blocks = splitIntoQuestionBlocks(raw);
-  if (!blocks.length) return { quiz: null, reason: "No question blocks found." };
-
-  const items: ParsedItem[] = [];
-  for (const b of blocks) {
-    const it = parseOneBlock(b);
-    if (!it) return { quiz: null, reason: "One or more blocks did not match strict formatting." };
-    items.push(it);
-  }
-
-  return { quiz: { items } };
 }

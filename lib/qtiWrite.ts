@@ -65,8 +65,13 @@ function stripChoicePrefix(text: string) {
 // (does not touch anything else)
 function stripLeadingQuestionNumber(html: string) {
   if (!html) return html;
-  // Start-of-string, optional whitespace, 1-3 digits, optional whitespace, then ) or ., then whitespace
-  return html.replace(/^\s*\d{1,3}\s*[\)\.]\s*/, "");
+
+  // Remove leading "12)" or "12." even if the prompt starts with wrapper tags like <p> or <span>
+  // Keeps the leading tags intact.
+  return html.replace(
+    /^(\s*(?:<[^>]+>\s*)*)\d{1,3}\s*[\)\.]\s*/i,
+    "$1"
+  );
 }
 
 function normalizeNewlines(s: string) {
