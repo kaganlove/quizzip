@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { openAiConvertToJson } from "../../../lib/openai";
 import { buildQtiZip } from "../../../lib/qtiWrite";
-import { parseStrictQuizText } from "../../../lib/textParser";
+import { parseStrictQuizText } from "../../../lib/strictQuizParser";
 
 function requireEnv(name: string) {
   const v = process.env[name];
@@ -274,29 +274,24 @@ export async function POST(req: Request) {
       }
     }
 
-    // Detect whether the raw input contains explicit correct-answer markers.
-    // If it does, we can safely preserve correct flags from AI conversion without "guessing".
+    // Detect whether the raw input contains explicit correct answer markers.
     const rawText = String(raw ?? "");
     const rawHasExplicitCorrectMarkers =
-      /\[\s*\*\s*\]/i.test(rawText) || // [*]
-      /\[\s*x\s*\]/i.test(rawText) || // [x]
-      /^\s*\*\s*\(?\s*[a-d]\s*[\)\.\:\-]/gim.test(rawText) || // *b) or *B.
-      /<mark\b/i.test(rawText) || // <mark>...</mark>
-      /background-color\s*:/i.test(rawText) || // inline highlight style
-      /background\s*:/i.test(rawText) || // inline highlight style (Word often uses background:)
-      /bgcolor\s*=/i.test(rawText) || // legacy html highlight
-      /\(\s*correct\s*\)/i.test(rawText) || // (correct)
-      /^\s*correct\s*(answer|answers)?\s*[:\-]/gim.test(rawText) || // Correct answer:
-      /^\s*answer\s*[:\-]/gim.test(rawText); // Answer:
+      /\[\s*\*\s*\]/i.test(rawText) ||
+      /\[\s*x\s*\]/i.test(rawText) ||
+      /^\s*\*\s*\(?\s*[a-d]\s*[\)\.\:\-]/gim.test(rawText) ||
+      /<mark\b/i.test(rawText) ||
+      /background-color\s*:/i.test(rawText) ||
+      /background\s*:/i.test(rawText) ||
+      /bgcolor\s*=/i.test(rawText) ||
+      /\(\s*correct\s*\)/i.test(rawText) ||
+      /^\s*correct\s*(answer|answers)?\s*[:\-]/gim.test(rawText) ||
+      /^\s*answer\s*[:\-]/gim.test(rawText);
 
-    // Do not guess correct answers.
-    // Keep correct answers only when they were explicitly marked in the original strict parse.
+    // Keep correct answers only when explicitly marked
     const explicitCorrectFlags = strict.quiz?.items?.map((it: any) =>
       Array.isArray(it?.choices) ? it.choices.some((c: any) => Boolean(c?.correct)) : false
     );
-
-    // EDIT 1: add this line
-    const hasAnyExplicitCorrectFlags = Array.isArray(explicitCorrectFlags) && explicitCorrectFlags.some(Boolean);
 
     const finalItems: any[] = Array.isArray(final?.items)
       ? final.items
@@ -305,10 +300,9 @@ export async function POST(req: Request) {
         : [];
 
     for (let i = 0; i < finalItems.length; i++) {
-      // EDIT 2: replace keep logic with this
-      const keep = hasAnyExplicitCorrectFlags
-        ? Boolean(explicitCorrectFlags?.[i])
-        : rawHasExplicitCorrectMarkers;
+      const keep =
+        (explicitCorrectFlags ? Boolean(explicitCorrectFlags[i]) : false) ||
+        rawHasExplicitCorrectMarkers;
 
       if (!keep) {
         finalItems[i].correctChoiceIds = [];
