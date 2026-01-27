@@ -80,7 +80,11 @@ async function getUserEmailFromRequest(req: Request) {
 }
 
 async function decrementCredits(userId: string, amount: number) {
-  const { data, error } = await supabase.from("credits").select("credits").eq("user_id", userId).maybeSingle();
+  const { data, error } = await supabase
+    .from("credits")
+    .select("credits")
+    .eq("user_id", userId)
+    .maybeSingle();
 
   if (error) {
     const msg = (error as any)?.message || String(error);
@@ -143,17 +147,20 @@ function stripHighlightMarkup(input: string) {
   s = s.replace(/<mark\b[^>]*>/gi, "");
   s = s.replace(/<\/mark>/gi, "");
 
-  s = s.replace(/style\s*=\s*"([^"]*)"/gi, (full, styleText) => {
-    const cleaned = String(styleText)
-      .replace(/background-color\s*:\s*[^;"]+;?/gi, "")
-      .replace(/background\s*:\s*[^;"]+;?/gi, "")
-      .replace(/mso-highlight\s*:\s*[^;"]+;?/gi, "")
-      .replace(/\s{2,}/g, " ")
-      .trim();
+  s = s.replace(
+    /style\s*=\s*"([^"]*)"/gi,
+    (full, styleText) => {
+      const cleaned = String(styleText)
+        .replace(/background-color\s*:\s*[^;"]+;?/gi, "")
+        .replace(/background\s*:\s*[^;"]+;?/gi, "")
+        .replace(/mso-highlight\s*:\s*[^;"]+;?/gi, "")
+        .replace(/\s{2,}/g, " ")
+        .trim();
 
-    if (!cleaned) return "";
-    return `style="${cleaned}"`;
-  });
+      if (!cleaned) return "";
+      return `style="${cleaned}"`;
+    }
+  );
 
   s = s.replace(/\sbgcolor\s*=\s*"[^"]*"/gi, "");
 
@@ -162,13 +169,7 @@ function stripHighlightMarkup(input: string) {
 
 function hasHighlightMarkup(s: string) {
   const t = String(s ?? "");
-  return (
-    /<mark\b/i.test(t) ||
-    /bgcolor\s*=/i.test(t) ||
-    /background-color\s*:/i.test(t) ||
-    /background\s*:/i.test(t) ||
-    /mso-highlight\s*:/i.test(t)
-  );
+  return /<mark\b/i.test(t) || /background-color\s*:/i.test(t) || /mso-highlight\s*:/i.test(t) || /bgcolor\s*=/i.test(t);
 }
 
 function htmlToPlainText(raw: string) {
@@ -264,26 +265,17 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Missing raw quiz text." }, { status: 400 });
     }
 
-    // NEW: replace tokens in raw before strict parse + OpenAI so images survive conversion
-    const rawForAi =
-      imagesMap && Object.keys(imagesMap).length > 0 ? (deepReplaceImageTokens(raw, imagesMap) as string) : raw;
-
-    // Strict parse for per question evidence when possible
-    const strict = parseStrictQuizText(rawForAi);
+    const strict = parseStrictQuizText(raw);
     const strictItems = strict.quiz?.items ?? [];
     questionCount = strictItems.length;
 
-    // Per question evidence from plain text blocks
-    const plain = htmlToPlainText(rawForAi);
+    const plain = htmlToPlainText(raw);
     const plainBlocks = splitPlainIntoQuestionBlocks(plain);
     const blockEvidence = plainBlocks.map((b) => blockHasExplicitCorrectMarker(b));
 
-    // Per question evidence from strict parse (choice.correct flags)
     const strictEvidence = strictItems.map((it: any) =>
       Array.isArray(it?.choices) ? it.choices.some((c: any) => Boolean(c?.correct)) : false
     );
-
-    const hasAnyStrictEvidence = strictEvidence.some(Boolean);
 
     if (userId) {
       const { ok, current } = await decrementCredits(userId, 1);
@@ -293,7 +285,7 @@ export async function POST(req: Request) {
     }
 
     const convert = await openAiConvertToJson({
-      raw: rawForAi,
+      raw,
       mode: "convert",
     });
 
@@ -333,7 +325,9 @@ export async function POST(req: Request) {
       final.title = clientTitle || "Converted Quiz";
     }
 
-    let reviewUsage = { input_tokens: 0, output_tokens: 0 };
+    // ✅ MINIMAL CHANGE STARTS HERE:
+    // Make reviewUsage compatible with optional token counts.
+    let reviewUsage: { input_tokens?: number; output_tokens?: number } = {};
     if (doReview) {
       const review = await openAiConvertToJson({
         raw: JSON.stringify(final),
@@ -344,30 +338,15 @@ export async function POST(req: Request) {
         reviewUsage = review.usage ?? reviewUsage;
       }
     }
+    // ✅ MINIMAL CHANGE ENDS HERE
 
-    // Apply client chosen title last so it always wins
     if (clientTitle) {
       final.title = clientTitle;
     }
 
-    // Restore any quizzip image tokens in final too (safe)
     if (imagesMap && Object.keys(imagesMap).length > 0) {
       final = deepReplaceImageTokens(final, imagesMap);
     }
-
-    // Detect whether the raw input contains explicit correct-answer markers at all
-    const rawText = String(rawForAi ?? "");
-    const rawHasExplicitCorrectMarkers =
-      /\[\s*\*\s*\]/i.test(rawText) ||
-      /\[\s*x\s*\]/i.test(rawText) ||
-      /^\s*\*\s*\(?\s*[a-d]\s*[\)\.\:\-]/gim.test(rawText) ||
-      /<mark\b/i.test(rawText) ||
-      /background-color\s*:/i.test(rawText) ||
-      /background\s*:/i.test(rawText) ||
-      /bgcolor\s*=/i.test(rawText) ||
-      /\(\s*correct\s*\)/i.test(rawText) ||
-      /^\s*correct\s*(answer|answers)?\s*[:=\-]/gim.test(rawText) ||
-      /^\s*answer\s*[:=\-]/gim.test(rawText);
 
     const finalItems: any[] = Array.isArray(final?.items) ? final.items : [];
     questionCount = finalItems.length;
@@ -376,28 +355,34 @@ export async function POST(req: Request) {
       const it = finalItems[i];
       if (!it || typeof it !== "object") continue;
 
-      // Always strip highlight from prompts so it doesn't show in Canvas
+      const hasStrict = Boolean(strictEvidence[i]);
+      const hasBlock = Boolean(blockEvidence[i]);
+
+      const choicesArr: any[] = Array.isArray(it.choices) ? it.choices : [];
+      const highlightHits: string[] = [];
+
+      for (let c = 0; c < choicesArr.length; c++) {
+        const ch = choicesArr[c];
+        const html = String(ch?.html ?? ch?.text ?? "");
+        if (hasHighlightMarkup(html)) {
+          highlightHits.push(String(ch?.id ?? ""));
+          if (typeof ch?.html === "string") ch.html = stripHighlightMarkup(ch.html);
+          if (typeof ch?.text === "string") ch.text = stripHighlightMarkup(ch.text);
+        } else {
+          if (typeof ch?.html === "string") ch.html = stripHighlightMarkup(ch.html);
+          if (typeof ch?.text === "string") ch.text = stripHighlightMarkup(ch.text);
+        }
+      }
+
       if (typeof it.promptHtml === "string") it.promptHtml = stripHighlightMarkup(it.promptHtml);
       if (typeof it.promptText === "string") it.promptText = stripHighlightMarkup(it.promptText);
       if (typeof it.prompt === "string") it.prompt = stripHighlightMarkup(it.prompt);
 
-      // Detect highlight inside model output per-choice, strip it, and treat it as correct
-      const choicesArr: any[] = Array.isArray(it.choices) ? it.choices : [];
-      const highlightIds: string[] = [];
+      const hasChoiceHighlight = highlightHits.length > 0;
+      const keepCorrect = hasStrict || hasBlock || hasChoiceHighlight;
 
-      for (const ch of choicesArr) {
-        const html = String(ch?.html ?? ch?.text ?? "");
-        if (hasHighlightMarkup(html)) {
-          const id = String(ch?.id ?? "");
-          if (id) highlightIds.push(id);
-        }
-
-        if (typeof ch?.html === "string") ch.html = stripHighlightMarkup(ch.html);
-        if (typeof ch?.text === "string") ch.text = stripHighlightMarkup(ch.text);
-      }
-
-      if (highlightIds.length > 0) {
-        const unique = Array.from(new Set(highlightIds));
+      if (hasChoiceHighlight) {
+        const unique = Array.from(new Set(highlightHits.filter(Boolean)));
         it.correctChoiceIds = unique;
 
         if (Array.isArray(it.choices)) {
@@ -406,17 +391,7 @@ export async function POST(req: Request) {
             correct: unique.includes(String(c?.id ?? "")),
           }));
         }
-
-        continue;
       }
-
-      // Evidence for this question from strict + block markers
-      const hasStrict = Boolean(strictEvidence[i]);
-      const hasBlock = Boolean(blockEvidence[i]);
-
-      // Key fix: if strict evidence exists anywhere, only trust strict per-item.
-      // If strict evidence exists nowhere, fall back to doc-level marker scan.
-      const keepCorrect = hasStrict || hasBlock || (!hasAnyStrictEvidence && rawHasExplicitCorrectMarkers);
 
       if (!keepCorrect) {
         it.correctChoiceIds = [];
