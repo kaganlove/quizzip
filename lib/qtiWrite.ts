@@ -47,24 +47,24 @@ function stripHighlightMarkup(input: string) {
   s = s.replace(/<mark\b[^>]*>/gi, "");
   s = s.replace(/<\/mark>/gi, "");
 
-  // Remove background style fragments inside style attributes
-  s = s.replace(
-    /style\s*=\s*"([^"]*)"/gi,
-    (full, styleText) => {
-      const cleaned = String(styleText)
-        .replace(/background-color\s*:\s*[^;"]+;?/gi, "")
-        .replace(/background\s*:\s*[^;"]+;?/gi, "")
-        .replace(/mso-highlight\s*:\s*[^;"]+;?/gi, "")
-        .replace(/\s{2,}/g, " ")
-        .trim();
-
-      if (!cleaned) return "";
-      return `style="${cleaned}"`;
-    }
-  );
-
-  // Remove bgcolor attr
+  // Remove bgcolor attr (double or single quotes)
   s = s.replace(/\sbgcolor\s*=\s*"[^"]*"/gi, "");
+  s = s.replace(/\sbgcolor\s*=\s*'[^']*'/gi, "");
+
+  // Remove background style fragments inside style attributes (double or single quotes)
+  s = s.replace(/style\s*=\s*(['"])(.*?)\1/gi, (full, q, styleText) => {
+    let cleaned = String(styleText ?? "")
+      .replace(/(^|;)\s*background-color\s*:\s*[^;]+;?/gi, "$1")
+      .replace(/(^|;)\s*background\s*:\s*[^;]+;?/gi, "$1")
+      .replace(/(^|;)\s*mso-highlight\s*:\s*[^;]+;?/gi, "$1")
+      .replace(/;;+/g, ";")
+      .trim();
+
+    cleaned = cleaned.replace(/^\s*;\s*|\s*;\s*$/g, "");
+
+    if (!cleaned) return "";
+    return `style=${q}${cleaned}${q}`;
+  });
 
   return s;
 }
@@ -111,14 +111,19 @@ function replacementSrcFor(filePath: string) {
 function extractAndReplaceDataUris(html: string, images: { path: string; bytes: Uint8Array }[]) {
   if (!html) return html;
 
-  const re = /src\s*=\s*"(data:image\/(png|jpeg|jpg|gif|webp);base64,([^"]+))"/gi;
+  // Supports src="data:image/..." and src='data:image/...'
+  const re =
+    /src\s*=\s*(['"])(data:image\/(png|jpeg|jpg|gif|webp);base64,([^'"]+))\1/gi;
 
   let out = html;
   let match: RegExpExecArray | null;
-  while ((match = re.exec(html)) !== null) {
-    const full = match[1];
-    const ext = (match[2] || "png").toLowerCase().replace("jpg", "jpeg");
-    const b64 = match[3] || "";
+
+  // Run on the evolving output so we don't miss anything
+  while ((match = re.exec(out)) !== null) {
+    const fullDataUrl = match[2]; // data:image/...;base64,....
+    const extRaw = (match[3] || "png").toLowerCase();
+    const ext = extRaw === "jpg" ? "jpeg" : extRaw;
+    const b64 = match[4] || "";
 
     let bytes: Uint8Array;
     try {
@@ -134,8 +139,14 @@ function extractAndReplaceDataUris(html: string, images: { path: string; bytes: 
 
     images.push({ path: filePath, bytes });
 
-    const replacementSrc = replacementSrcFor(filePath);
-    out = out.replaceAll(`src="${full}"`, replacementSrc);
+    // Replace the entire src="data:..." (or src='data:...') with src="images/..."
+    out =
+      out.slice(0, match.index) +
+      `src="${filePath}"` +
+      out.slice(match.index + match[0].length);
+
+    // Reset lastIndex because we changed string length
+    re.lastIndex = 0;
   }
 
   return out;
@@ -197,13 +208,20 @@ function buildItemXml(item: QtiWriteItem, index: number) {
   const title = escapeXml(`Question ${index + 1}`);
 
   const promptHtmlRaw = item.promptHtml || "";
+
+  // IMPORTANT: do NOT strip data URIs here. That happens earlier in buildZipBytes.
+  // Here we only strip question numbering and highlight markup to keep Canvas clean.
   const promptHtml = stripHighlightMarkup(stripLeadingQuestionNumber(promptHtmlRaw));
   const promptText = stripHtmlToText(promptHtml);
 
   const type = item.type || (item.choices?.length ? "multiple_choice" : "essay");
   const qt = canvasQuestionType(type);
 
-  if (qt === "multiple_choice_question" || qt === "multiple_answers_question" || qt === "true_false_question") {
+  if (
+    qt === "multiple_choice_question" ||
+    qt === "multiple_answers_question" ||
+    qt === "true_false_question"
+  ) {
     const choices = item.choices ?? [];
     const correctIds = item.correctChoiceIds ?? [];
 
@@ -337,9 +355,7 @@ function buildAssessmentXml(json: QtiWriteJson) {
 }
 
 function buildManifestXml(title: string, files: string[]) {
-  const fileTags = files
-    .map((f) => `      <file href="${escapeXml(f)}"/>`)
-    .join("\n");
+  const fileTags = files.map((f) => `      <file href="${escapeXml(f)}"/>`).join("\n");
 
   return normalizeNewlines(`
 <?xml version="1.0" encoding="UTF-8"?>
@@ -367,6 +383,8 @@ async function buildZipBytes(json: QtiWriteJson) {
 
   const images: { path: string; bytes: Uint8Array }[] = [];
 
+  // Extract images FIRST (from promptHtml + choice html), replacing data URIs with file paths.
+  // Then later we strip highlight markup during XML generation (buildItemXml / stripChoicePrefix).
   const normalizedItems = (json.items ?? []).map((it) => {
     const prompt = extractAndReplaceDataUris(it.promptHtml ?? "", images);
     const choices = (it.choices ?? []).map((c) => ({
@@ -378,7 +396,6 @@ async function buildZipBytes(json: QtiWriteJson) {
   });
 
   const assessmentXml = buildAssessmentXml({ ...json, items: normalizedItems });
-
   zip.file("assessment.xml", assessmentXml);
 
   for (const img of images) {
