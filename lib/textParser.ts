@@ -18,60 +18,79 @@ export type ParsedQuiz = {
   items: ParsedItem[];
 };
 
-function extractAnswerLetters(line: string): string[] {
-  const s = (line ?? "").trim();
-  if (!s) return [];
-
-  // Supports:
-  // "Correct: C"
-  // "Correct answers: a, b"
-  // "Answer: A"
-  // "Answer (text): Technician A only"
-  // "Correct = .zip (option b)"
-  const m = s.match(
-    /^(?:correct\s*answers?|correct\s*answer|correct|answer)(?:\s*\([^)]*\))?\s*[:=]?\s*(.+)$/i
+function lineHasHighlight(s: string) {
+  const t = String(s || "");
+  return (
+    /<mark\b/i.test(t) ||
+    /bgcolor\s*=/i.test(t) ||
+    /background-color\s*:/i.test(t) ||
+    /background\s*:/i.test(t) ||
+    /mso-highlight\s*:/i.test(t)
   );
-  const tail = (m ? m[1] : s).trim();
+}
+
+function looksLikeAnswerKeyLine(line: string) {
+  return /^(?:\s*(?:correct\s*answers?|correct\s*answer|correct|answer)\b)/i.test(line ?? "");
+}
+
+function extractAnswerTail(line: string): string | null {
+  const s = (line ?? "").trim();
+  if (!s) return null;
+
+  const m = s.match(/^(?:correct\s*answers?|correct\s*answer|correct|answer)\s*[:=]?\s*(.+)$/i);
+  if (!m) return null;
+
+  return String(m[1] ?? "").trim() || null;
+}
+
+function extractAnswerLetters(line: string): string[] {
+  const tail = extractAnswerTail(line);
+  if (!tail) return [];
+
+  const compact = tail.replace(/\s+/g, " ").trim();
+
+  const lettersOnly =
+    /^(?:[a-d])(?:\s*(?:,|and|&)\s*(?:[a-d]))*$/i.test(compact) ||
+    /^(?:option\s*[a-d])(?:\s*(?:,|and|&)\s*option\s*[a-d])*$/i.test(compact);
+
+  if (!lettersOnly) return [];
 
   const found: string[] = [];
 
-  // Prefer explicit "option X" if present
-  for (const opt of tail.matchAll(/\boption\s*([a-d])\b/gi)) {
+  for (const opt of compact.matchAll(/\boption\s*([a-d])\b/gi)) {
     found.push((opt[1] ?? "").toUpperCase());
   }
 
-  // Otherwise pick single letter tokens A to D
-  for (const mm of tail.matchAll(/\b([a-d])\b/gi)) {
+  for (const mm of compact.matchAll(/\b([a-d])\b/gi)) {
     found.push((mm[1] ?? "").toUpperCase());
   }
 
   return Array.from(new Set(found)).filter((x) => /^[A-D]$/.test(x));
 }
 
-function extractTrueFalseAnswer(line: string): "true" | "false" | null {
-  const s = (line ?? "").trim();
-  if (!s) return null;
+function extractAnswerText(line: string): string | null {
+  const tail = extractAnswerTail(line);
+  if (!tail) return null;
 
-  const m = s.match(
-    /^(?:correct|answer)(?:\s*\([^)]*\))?\s*[:=]?\s*(true|false)\b/i
-  );
-  if (!m) return null;
-  return m[1].toLowerCase() === "true" ? "true" : "false";
+  if (/^\s*(?:[a-d])(?:\s*(?:,|and|&)\s*(?:[a-d]))*\s*$/i.test(tail)) return null;
+  if (/^\s*(?:option\s*[a-d])(?:\s*(?:,|and|&)\s*option\s*[a-d])*\s*$/i.test(tail)) return null;
+
+  const cleaned = tail.replace(/^\((?:text|exact)\)\s*:\s*/i, "").trim();
+  return cleaned || null;
 }
 
-function looksLikeAnswerKeyLine(line: string) {
-  return /^(?:\s*(?:correct\s*answers?|correct\s*answer|correct|answer)\b)/i.test(
-    line ?? ""
-  );
+function extractTrueFalseAnswer(line: string): "true" | "false" | null {
+  const tail = extractAnswerTail(line);
+  if (!tail) return null;
+
+  const m = tail.match(/\b(true|false)\b/i);
+  if (!m) return null;
+
+  return m[1].toLowerCase() === "true" ? "true" : "false";
 }
 
 function normLines(raw: string) {
   return raw.replace(/\r\n/g, "\n").replace(/\r/g, "\n");
-}
-
-function stripNumPrefix(line: string) {
-  // Accept: 12. , 12) , (12) , 12: , 12 -
-  return line.replace(/^\s*\(?\s*\d+\s*[\.\)\:\-]\s+/, "").trim();
 }
 
 function isBlank(line: string) {
@@ -79,8 +98,11 @@ function isBlank(line: string) {
 }
 
 function looksLikeQuestionStart(line: string) {
-  // Accept: 12. , 12) , (12) , 12: , 12 -
   return /^\s*\(?\s*\d+\s*[\.\)\:\-]\s+/.test(line);
+}
+
+function stripNumPrefix(line: string) {
+  return line.replace(/^\s*\(?\s*\d+\s*[\.\)\:\-]\s+/, "").trim();
 }
 
 function splitIntoQuestionBlocks(raw: string) {
@@ -110,30 +132,61 @@ function splitIntoQuestionBlocks(raw: string) {
 
 function stripChoiceLabel(text: string) {
   const s = (text ?? "").trim();
-
-  // Example: "B. Process" or "b) Process" or "(C): Process"
   return s.replace(/^\s*\(?\s*[A-D]\s*[\)\.\:\-]\s+/i, "").trim();
 }
 
+function looksIgnorableLine(line: string) {
+  const s = (line ?? "").trim();
+  if (!s) return true;
+  return /^(section\b|directions\b|note\b)/i.test(s);
+}
+
+function applyAnswerTextToChoices(choices: ParsedChoice[], answerText: string | null) {
+  if (!answerText) return;
+
+  const target = answerText.trim().toLowerCase();
+  if (!target) return;
+
+  for (const c of choices) {
+    const ct = String(c.text ?? "").trim().toLowerCase();
+    if (!ct) continue;
+
+    if (ct === target) {
+      c.correct = true;
+      continue;
+    }
+
+    if (ct.includes(target) || target.includes(ct)) {
+      c.correct = true;
+    }
+  }
+}
+
 function parseBracketMulti(lines: string[], promptText: string): ParsedItem | null {
-  // [ ] Option
-  // [*] Option
   const optionRe = /^\s*\[(\*?)\]\s+(.*\S)\s*$/;
 
   const choices: ParsedChoice[] = [];
   let answerLetters: string[] = [];
+  let answerText: string | null = null;
   let tfAnswer: "true" | "false" | null = null;
 
   for (const ln of lines) {
     if (looksLikeAnswerKeyLine(ln)) {
-      answerLetters = answerLetters.length ? answerLetters : extractAnswerLetters(ln);
+      if (!answerLetters.length) answerLetters = extractAnswerLetters(ln);
+      if (!answerText) answerText = extractAnswerText(ln);
       tfAnswer = tfAnswer ?? extractTrueFalseAnswer(ln);
       continue;
     }
 
+    if (looksIgnorableLine(ln) && choices.length >= 2) continue;
+
     const m = ln.match(optionRe);
     if (!m) return null;
-    choices.push({ text: m[2], correct: Boolean(m[1]) });
+
+    const choiceText = m[2];
+    const isCorrect = Boolean(m[1]) || lineHasHighlight(ln) || lineHasHighlight(choiceText);
+
+    choices.push({ text: choiceText, correct: isCorrect });
   }
 
   if (choices.every((c) => !c.correct)) {
@@ -146,42 +199,39 @@ function parseBracketMulti(lines: string[], promptText: string): ParsedItem | nu
         const idx = L.charCodeAt(0) - 65;
         if (idx >= 0 && idx < choices.length) choices[idx].correct = true;
       }
+    } else {
+      applyAnswerTextToChoices(choices, answerText);
     }
   }
 
   const correctCount = choices.filter((c) => c.correct).length;
 
-  if (correctCount === 0) {
-    return { type: "multiple_choice_single", promptText, choices };
-  }
-
-  if (correctCount > 1) {
-    return { type: "multiple_choice_multiple", promptText, choices };
-  }
-
+  if (correctCount === 0) return { type: "multiple_choice_single", promptText, choices };
+  if (correctCount > 1) return { type: "multiple_choice_multiple", promptText, choices };
   return { type: "multiple_choice_single", promptText, choices };
 }
 
 function parseStarredAlphaChoices(lines: string[], promptText: string): ParsedItem | null {
-  // a) 1
-  // *b) 2
-  // Also allow: "B. Text", "* B. Text", "(A): Text", "A - Text"
   const re = /^\s*(\*)?\s*\(?\s*([a-d])\s*[\)\.\:\-]\s+(.*\S)\s*$/i;
 
   const choices: ParsedChoice[] = [];
   let answerLetters: string[] = [];
+  let answerText: string | null = null;
   let tfAnswer: "true" | "false" | null = null;
 
   for (const ln of lines) {
     if (looksLikeAnswerKeyLine(ln)) {
       if (!answerLetters.length) answerLetters = extractAnswerLetters(ln);
+      if (!answerText) answerText = extractAnswerText(ln);
       tfAnswer = tfAnswer ?? extractTrueFalseAnswer(ln);
       continue;
     }
 
+    if (looksIgnorableLine(ln) && choices.length >= 2) continue;
+
     const tf = ln.trim();
     if (/^\*?\s*(true|false)\s*$/i.test(tf)) {
-      const isCorrect = /^\*/.test(tf);
+      const isCorrect = /^\*/.test(tf) || lineHasHighlight(ln);
       const text = tf.replace(/^\*\s*/, "");
       choices.push({ text, correct: isCorrect });
       continue;
@@ -191,11 +241,13 @@ function parseStarredAlphaChoices(lines: string[], promptText: string): ParsedIt
     if (!m) return null;
 
     const text = stripChoiceLabel(m[3]);
+
     const isCorrect =
       Boolean(m[1]) ||
+      lineHasHighlight(ln) ||
+      lineHasHighlight(m[3]) ||
       /^\s*\[\s*\*\s*\]\s*/.test(ln) ||
       /\(\s*correct\s*\)$/i.test(ln) ||
-      /\s+-\s*correct\s*$/i.test(ln) ||
       /\s+correct\s*$/i.test(ln) ||
       /\s+\u2713\s*$/i.test(ln);
 
@@ -212,21 +264,17 @@ function parseStarredAlphaChoices(lines: string[], promptText: string): ParsedIt
         const idx = L.charCodeAt(0) - 65;
         if (idx >= 0 && idx < choices.length) choices[idx].correct = true;
       }
+    } else {
+      applyAnswerTextToChoices(choices, answerText);
     }
   }
 
   const correctCount = choices.filter((c) => c.correct).length;
 
-  if (correctCount === 0) {
-    const isTf = choices.length === 2 && choices.every((c) => /^(true|false)$/i.test(c.text.trim()));
-    return { type: isTf ? "true_false" : "multiple_choice_single", promptText, choices };
-  }
-
-  if (correctCount > 1) {
-    return { type: "multiple_choice_multiple", promptText, choices };
-  }
-
   const isTf = choices.length === 2 && choices.every((c) => /^(true|false)$/i.test(c.text.trim()));
+
+  if (correctCount === 0) return { type: isTf ? "true_false" : "multiple_choice_single", promptText, choices };
+  if (correctCount > 1) return { type: "multiple_choice_multiple", promptText, choices };
   return { type: isTf ? "true_false" : "multiple_choice_single", promptText, choices };
 }
 
@@ -254,14 +302,10 @@ function parseShortAnswer(lines: string[], promptText: string): ParsedItem | nul
 
 function parseEssayOrFile(lines: string[], promptText: string): ParsedItem | null {
   const hasEssayMarker = lines.some((l) => /^\s*#{3,4}\s*$/.test(l));
-  if (hasEssayMarker) {
-    return { type: "essay", promptText };
-  }
+  if (hasEssayMarker) return { type: "essay", promptText };
 
   const hasFileMarker = lines.some((l) => /^\s*\^{3,4}\s*$/.test(l));
-  if (hasFileMarker) {
-    return { type: "file_upload", promptText };
-  }
+  if (hasFileMarker) return { type: "file_upload", promptText };
 
   return null;
 }
