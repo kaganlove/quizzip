@@ -169,7 +169,12 @@ function stripHighlightMarkup(input: string) {
 
 function hasHighlightMarkup(s: string) {
   const t = String(s ?? "");
-  return /<mark\b/i.test(t) || /background-color\s*:/i.test(t) || /mso-highlight\s*:/i.test(t) || /bgcolor\s*=/i.test(t);
+  return (
+    /<mark\b/i.test(t) ||
+    /background-color\s*:/i.test(t) ||
+    /mso-highlight\s*:/i.test(t) ||
+    /bgcolor\s*=/i.test(t)
+  );
 }
 
 function htmlToPlainText(raw: string) {
@@ -227,7 +232,6 @@ function blockHasExplicitCorrectMarker(block: string) {
   return false;
 }
 
-// NEW: parse an "Answer Key" section and map question number to letters
 function parseAnswerKeyMap(plain: string): Record<number, string[]> {
   const text = String(plain ?? "").replace(/\r\n/g, "\n").replace(/\r/g, "\n");
   const lower = text.toLowerCase();
@@ -245,10 +249,6 @@ function parseAnswerKeyMap(plain: string): Record<number, string[]> {
     const line = ln.trim();
     if (!line) continue;
 
-    // Examples:
-    // 11. B
-    // 11) C (12)
-    // 11 - A, D
     const m = line.match(/^\s*(\d{1,4})\s*[\.\)\:\-]\s*([A-D](?:\s*,\s*[A-D])*)\b/i);
     if (!m) continue;
 
@@ -317,7 +317,6 @@ export async function POST(req: Request) {
       Array.isArray(it?.choices) ? it.choices.some((c: any) => Boolean(c?.correct)) : false
     );
 
-    // NEW: Answer Key map by question number (1 based)
     const answerKeyMap = parseAnswerKeyMap(plain);
 
     if (userId) {
@@ -368,15 +367,22 @@ export async function POST(req: Request) {
       final.title = clientTitle || "Converted Quiz";
     }
 
-    let reviewUsage = { input_tokens: 0, output_tokens: 0 };
+    // FIX: keep reviewUsage as numbers so TS stays happy
+    let reviewUsage: { input_tokens: number; output_tokens: number } = { input_tokens: 0, output_tokens: 0 };
+
     if (doReview) {
       const review = await openAiConvertToJson({
         raw: JSON.stringify(final),
         mode: "review",
       });
+
       if (review?.data) {
         final = review.data as any;
-        reviewUsage = review.usage ?? reviewUsage;
+
+        reviewUsage = {
+          input_tokens: review.usage?.input_tokens ?? reviewUsage.input_tokens,
+          output_tokens: review.usage?.output_tokens ?? reviewUsage.output_tokens,
+        };
       }
     }
 
@@ -418,7 +424,6 @@ export async function POST(req: Request) {
 
       const hasChoiceHighlight = highlightHits.length > 0;
 
-      // NEW: answer key evidence for this question number (1 based)
       const keyLetters = answerKeyMap[i + 1] ?? [];
       const hasAnswerKey = Array.isArray(keyLetters) && keyLetters.length > 0;
 
@@ -435,8 +440,10 @@ export async function POST(req: Request) {
           }));
         }
       } else if (hasAnswerKey) {
-        // Only apply answer key when the model did not already produce correct ids.
-        const currentIds: string[] = Array.isArray(it.correctChoiceIds) ? it.correctChoiceIds.map((x: any) => String(x)) : [];
+        const currentIds: string[] = Array.isArray(it.correctChoiceIds)
+          ? it.correctChoiceIds.map((x: any) => String(x))
+          : [];
+
         if (!currentIds.length) {
           const ids = keyLetters.map((L) => String(L).toUpperCase()).filter((L) => /^[A-D]$/.test(L));
           it.correctChoiceIds = ids;
@@ -480,8 +487,8 @@ export async function POST(req: Request) {
       email,
       questionCount,
       mode,
-      inputTokens: (inputTokens ?? 0) + (reviewUsage?.input_tokens ?? 0),
-      outputTokens: (outputTokens ?? 0) + (reviewUsage?.output_tokens ?? 0),
+      inputTokens: (inputTokens ?? 0) + (reviewUsage.input_tokens ?? 0),
+      outputTokens: (outputTokens ?? 0) + (reviewUsage.output_tokens ?? 0),
       model,
       startedAt,
       finishedAt,
