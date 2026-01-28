@@ -144,9 +144,11 @@ function stripHighlightMarkup(input: string) {
   if (!input) return input;
   let s = input;
 
+  // Remove <mark> wrappers
   s = s.replace(/<mark\b[^>]*>/gi, "");
   s = s.replace(/<\/mark>/gi, "");
 
+  // Remove background style fragments inside style attributes
   s = s.replace(
     /style\s*=\s*"([^"]*)"/gi,
     (full, styleText) => {
@@ -162,6 +164,22 @@ function stripHighlightMarkup(input: string) {
     }
   );
 
+  // Remove Quill highlight classes like ql-bg-yellow but keep other classes
+  s = s.replace(/class\s*=\s*"([^"]*)"/gi, (full, classText) => {
+    const cls = String(classText);
+    if (!/(\s|^)ql-bg-/i.test(cls)) return full;
+
+    const cleaned = cls
+      .split(/\s+/)
+      .filter((c) => c && !/^ql-bg-/i.test(c))
+      .join(" ")
+      .trim();
+
+    if (!cleaned) return "";
+    return `class="${cleaned}"`;
+  });
+
+  // Remove bgcolor attr
   s = s.replace(/\sbgcolor\s*=\s*"[^"]*"/gi, "");
 
   return s;
@@ -169,7 +187,14 @@ function stripHighlightMarkup(input: string) {
 
 function hasHighlightMarkup(s: string) {
   const t = String(s ?? "");
-  return /<mark\b/i.test(t) || /background-color\s*:/i.test(t) || /mso-highlight\s*:/i.test(t) || /bgcolor\s*=/i.test(t);
+  return (
+    /<mark\b/i.test(t) ||
+    /background-color\s*:/i.test(t) ||
+    /background\s*:/i.test(t) ||
+    /mso-highlight\s*:/i.test(t) ||
+    /bgcolor\s*=/i.test(t) ||
+    /class\s*=\s*"[^"]*\bql-bg-[^"]*"/i.test(t)
+  );
 }
 
 function htmlToPlainText(raw: string) {
@@ -221,7 +246,6 @@ function blockHasExplicitCorrectMarker(block: string) {
   if (/\(\s*correct\s*\)/i.test(b)) return true;
   if (/(^|\n)\s*correct\s*(answer|answers)?(?:\s*\([^)]*\))?\s*[:=\-]/gim.test(b)) return true;
   if (/(^|\n)\s*answer(?:\s*\([^)]*\))?\s*[:=\-]/gim.test(b)) return true;
-
   if (/the\s+correct\s+answer\s+is\s+choice\s+[a-d]/i.test(b)) return true;
 
   return false;
@@ -265,12 +289,14 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Missing raw quiz text." }, { status: 400 });
     }
 
-    const strict = parseStrictQuizText(raw);
+    // Use plain text for strict evidence so HTML input does not break parsing
+    const plainForEvidence = htmlToPlainText(raw);
+
+    const strict = parseStrictQuizText(plainForEvidence);
     const strictItems = strict.quiz?.items ?? [];
     questionCount = strictItems.length;
 
-    const plain = htmlToPlainText(raw);
-    const plainBlocks = splitPlainIntoQuestionBlocks(plain);
+    const plainBlocks = splitPlainIntoQuestionBlocks(plainForEvidence);
     const blockEvidence = plainBlocks.map((b) => blockHasExplicitCorrectMarker(b));
 
     const strictEvidence = strictItems.map((it: any) =>
@@ -325,8 +351,6 @@ export async function POST(req: Request) {
       final.title = clientTitle || "Converted Quiz";
     }
 
-    // ✅ MINIMAL CHANGE STARTS HERE:
-    // Make reviewUsage compatible with optional token counts.
     let reviewUsage: { input_tokens?: number; output_tokens?: number } = {};
     if (doReview) {
       const review = await openAiConvertToJson({
@@ -338,12 +362,12 @@ export async function POST(req: Request) {
         reviewUsage = review.usage ?? reviewUsage;
       }
     }
-    // ✅ MINIMAL CHANGE ENDS HERE
 
     if (clientTitle) {
       final.title = clientTitle;
     }
 
+    // Restore any quizzip image tokens before generating QTI
     if (imagesMap && Object.keys(imagesMap).length > 0) {
       final = deepReplaceImageTokens(final, imagesMap);
     }
@@ -363,14 +387,18 @@ export async function POST(req: Request) {
 
       for (let c = 0; c < choicesArr.length; c++) {
         const ch = choicesArr[c];
-        const html = String(ch?.html ?? ch?.text ?? "");
+
+        const html = String((ch as any)?.html ?? (ch as any)?.text ?? ch ?? "");
         if (hasHighlightMarkup(html)) {
-          highlightHits.push(String(ch?.id ?? ""));
-          if (typeof ch?.html === "string") ch.html = stripHighlightMarkup(ch.html);
-          if (typeof ch?.text === "string") ch.text = stripHighlightMarkup(ch.text);
+          const fallbackId = String.fromCharCode(65 + c);
+          const cid = String((ch as any)?.id ?? (ch as any)?.ident ?? "") || fallbackId;
+          highlightHits.push(cid);
+
+          if (typeof (ch as any)?.html === "string") (ch as any).html = stripHighlightMarkup((ch as any).html);
+          if (typeof (ch as any)?.text === "string") (ch as any).text = stripHighlightMarkup((ch as any).text);
         } else {
-          if (typeof ch?.html === "string") ch.html = stripHighlightMarkup(ch.html);
-          if (typeof ch?.text === "string") ch.text = stripHighlightMarkup(ch.text);
+          if (typeof (ch as any)?.html === "string") (ch as any).html = stripHighlightMarkup((ch as any).html);
+          if (typeof (ch as any)?.text === "string") (ch as any).text = stripHighlightMarkup((ch as any).text);
         }
       }
 
@@ -386,10 +414,15 @@ export async function POST(req: Request) {
         it.correctChoiceIds = unique;
 
         if (Array.isArray(it.choices)) {
-          it.choices = it.choices.map((c: any) => ({
-            ...c,
-            correct: unique.includes(String(c?.id ?? "")),
-          }));
+          it.choices = it.choices.map((c: any, idx: number) => {
+            const fallbackId = String.fromCharCode(65 + idx);
+            const cid = String(c?.id ?? c?.ident ?? "") || fallbackId;
+            return {
+              ...c,
+              id: c?.id ?? cid,
+              correct: unique.includes(cid),
+            };
+          });
         }
       }
 

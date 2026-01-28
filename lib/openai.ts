@@ -18,6 +18,7 @@ function requireEnv(name: string) {
 }
 
 function extractOutputText(resp: any): string {
+  // Responses API: best effort extraction
   if (typeof resp?.output_text === "string" && resp.output_text.trim()) return resp.output_text;
 
   const out = resp?.output;
@@ -39,6 +40,7 @@ function extractOutputText(resp: any): string {
 
 function stripCodeFences(s: string) {
   let out = (s ?? "").trim();
+  // ```json ... ``` or ``` ... ```
   out = out.replace(/^```\s*json\s*/i, "```");
   if (out.startsWith("```")) {
     out = out.replace(/^```\s*/i, "");
@@ -50,19 +52,22 @@ function stripCodeFences(s: string) {
 function coerceJsonFromText(text: string): any | null {
   const raw = stripCodeFences(text);
 
-  // 1) direct parse
+  // 1) Direct parse
   try {
     return JSON.parse(raw);
   } catch {
     // continue
   }
 
-  // 2) extract first JSON object span
+  // 2) Try to extract the first JSON object span
   const first = raw.indexOf("{");
   const last = raw.lastIndexOf("}");
   if (first >= 0 && last > first) {
     const slice = raw.slice(first, last + 1);
+
+    // Common “almost JSON” cleanup: trailing commas
     const cleaned = slice.replace(/,\s*([}\]])/g, "$1");
+
     try {
       return JSON.parse(cleaned);
     } catch {
@@ -113,8 +118,8 @@ export async function openAiConvertToJson(args: { raw: string; mode: ConvertMode
     "6) Preserve span class attributes exactly when present (for example ql-bg-yellow).",
     "",
     "Interpret these common authoring conventions:",
-    "1) Multiple choice single: a) b) c) lines. Exactly one correct marked with a leading asterisk like *c). When a choice is marked correct, remove the asterisk from the choice text.",
-    "2) Multiple answers: [ ] incorrect and [*] or [x] correct.",
+    "1) Multiple choice single: a) b) c) lines, exactly one correct marked with a leading asterisk like *c). When a choice is marked correct, remove the asterisk from the choice text.",
+    "2) Multiple answers: [ ] incorrect and [*] correct.",
     "3) Short answer: correct answers are lines that start with an asterisk followed by a space, like * Santa.",
     "4) Essay: a line of #### indicates essay.",
     "5) File upload: a line of ^^^^ indicates file upload.",
@@ -132,14 +137,14 @@ export async function openAiConvertToJson(args: { raw: string; mode: ConvertMode
   ].join("\n");
 
   const schemaHint = [
-    "JSON shape:",
+    "Return JSON with shape:",
     "{",
     '  "title": "optional quiz title",',
     '  "items": [',
     "    {",
     '      "type": "multiple_choice_single|multiple_choice_multiple|true_false|short_answer|essay|file_upload",',
-    '      "promptText": "string (may include HTML)",',
-    '      "choices": [{"text":"string (may include HTML)","correct":true|false}] (only for choice based types),',
+    '      "promptHtml": "string",',
+    '      "choices": [{"text":"string","correct":true|false}] (only for choice based types),',
     '      "correctText": "string (optional, for short answer alternatives or essay guidance)"',
     "    }",
     "  ]",
@@ -175,7 +180,7 @@ export async function openAiConvertToJson(args: { raw: string; mode: ConvertMode
     body: JSON.stringify({
       model,
       input,
-      // This needs to be high or large quizzes will truncate and break JSON.
+      // Many questions + HTML can exceed 2k tokens and truncation breaks JSON.
       max_output_tokens: 6000,
       text: { format: { type: "json_object" } },
     }),
@@ -187,8 +192,8 @@ export async function openAiConvertToJson(args: { raw: string; mode: ConvertMode
   }
 
   const json = await res.json();
-  const textOut = extractOutputText(json);
 
+  const textOut = extractOutputText(json);
   if (!textOut) {
     const status = json?.status ? ` status=${json.status}` : "";
     throw new Error(`OpenAI returned no text output.${status}`);
