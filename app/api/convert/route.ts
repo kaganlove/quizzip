@@ -144,11 +144,9 @@ function stripHighlightMarkup(input: string) {
   if (!input) return input;
   let s = input;
 
-  // Remove <mark> wrappers
   s = s.replace(/<mark\b[^>]*>/gi, "");
   s = s.replace(/<\/mark>/gi, "");
 
-  // Remove background style fragments inside style attributes
   s = s.replace(
     /style\s*=\s*"([^"]*)"/gi,
     (full, styleText) => {
@@ -164,22 +162,6 @@ function stripHighlightMarkup(input: string) {
     }
   );
 
-  // Remove Quill highlight classes like ql-bg-yellow but keep other classes
-  s = s.replace(/class\s*=\s*"([^"]*)"/gi, (full, classText) => {
-    const cls = String(classText);
-    if (!/(\s|^)ql-bg-/i.test(cls)) return full;
-
-    const cleaned = cls
-      .split(/\s+/)
-      .filter((c) => c && !/^ql-bg-/i.test(c))
-      .join(" ")
-      .trim();
-
-    if (!cleaned) return "";
-    return `class="${cleaned}"`;
-  });
-
-  // Remove bgcolor attr
   s = s.replace(/\sbgcolor\s*=\s*"[^"]*"/gi, "");
 
   return s;
@@ -187,14 +169,7 @@ function stripHighlightMarkup(input: string) {
 
 function hasHighlightMarkup(s: string) {
   const t = String(s ?? "");
-  return (
-    /<mark\b/i.test(t) ||
-    /background-color\s*:/i.test(t) ||
-    /background\s*:/i.test(t) ||
-    /mso-highlight\s*:/i.test(t) ||
-    /bgcolor\s*=/i.test(t) ||
-    /class\s*=\s*"[^"]*\bql-bg-[^"]*"/i.test(t)
-  );
+  return /<mark\b/i.test(t) || /background-color\s*:/i.test(t) || /mso-highlight\s*:/i.test(t) || /bgcolor\s*=/i.test(t);
 }
 
 function htmlToPlainText(raw: string) {
@@ -246,9 +221,50 @@ function blockHasExplicitCorrectMarker(block: string) {
   if (/\(\s*correct\s*\)/i.test(b)) return true;
   if (/(^|\n)\s*correct\s*(answer|answers)?(?:\s*\([^)]*\))?\s*[:=\-]/gim.test(b)) return true;
   if (/(^|\n)\s*answer(?:\s*\([^)]*\))?\s*[:=\-]/gim.test(b)) return true;
+
   if (/the\s+correct\s+answer\s+is\s+choice\s+[a-d]/i.test(b)) return true;
 
   return false;
+}
+
+// NEW: parse an "Answer Key" section and map question number to letters
+function parseAnswerKeyMap(plain: string): Record<number, string[]> {
+  const text = String(plain ?? "").replace(/\r\n/g, "\n").replace(/\r/g, "\n");
+  const lower = text.toLowerCase();
+
+  let start = lower.indexOf("answer key");
+  if (start < 0) start = lower.indexOf("answer keys");
+  if (start < 0) return {};
+
+  const tail = text.slice(start);
+  const lines = tail.split("\n");
+
+  const map: Record<number, string[]> = {};
+
+  for (const ln of lines) {
+    const line = ln.trim();
+    if (!line) continue;
+
+    // Examples:
+    // 11. B
+    // 11) C (12)
+    // 11 - A, D
+    const m = line.match(/^\s*(\d{1,4})\s*[\.\)\:\-]\s*([A-D](?:\s*,\s*[A-D])*)\b/i);
+    if (!m) continue;
+
+    const n = Number(m[1]);
+    if (!Number.isFinite(n)) continue;
+
+    const lettersRaw = String(m[2] ?? "");
+    const letters = lettersRaw
+      .split(",")
+      .map((x) => x.trim().toUpperCase())
+      .filter((x) => /^[A-D]$/.test(x));
+
+    if (letters.length) map[n] = Array.from(new Set(letters));
+  }
+
+  return map;
 }
 
 export async function POST(req: Request) {
@@ -289,19 +305,20 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Missing raw quiz text." }, { status: 400 });
     }
 
-    // Use plain text for strict evidence so HTML input does not break parsing
-    const plainForEvidence = htmlToPlainText(raw);
-
-    const strict = parseStrictQuizText(plainForEvidence);
+    const strict = parseStrictQuizText(raw);
     const strictItems = strict.quiz?.items ?? [];
     questionCount = strictItems.length;
 
-    const plainBlocks = splitPlainIntoQuestionBlocks(plainForEvidence);
+    const plain = htmlToPlainText(raw);
+    const plainBlocks = splitPlainIntoQuestionBlocks(plain);
     const blockEvidence = plainBlocks.map((b) => blockHasExplicitCorrectMarker(b));
 
     const strictEvidence = strictItems.map((it: any) =>
       Array.isArray(it?.choices) ? it.choices.some((c: any) => Boolean(c?.correct)) : false
     );
+
+    // NEW: Answer Key map by question number (1 based)
+    const answerKeyMap = parseAnswerKeyMap(plain);
 
     if (userId) {
       const { ok, current } = await decrementCredits(userId, 1);
@@ -351,7 +368,7 @@ export async function POST(req: Request) {
       final.title = clientTitle || "Converted Quiz";
     }
 
-    let reviewUsage: { input_tokens?: number; output_tokens?: number } = {};
+    let reviewUsage = { input_tokens: 0, output_tokens: 0 };
     if (doReview) {
       const review = await openAiConvertToJson({
         raw: JSON.stringify(final),
@@ -367,7 +384,6 @@ export async function POST(req: Request) {
       final.title = clientTitle;
     }
 
-    // Restore any quizzip image tokens before generating QTI
     if (imagesMap && Object.keys(imagesMap).length > 0) {
       final = deepReplaceImageTokens(final, imagesMap);
     }
@@ -387,19 +403,13 @@ export async function POST(req: Request) {
 
       for (let c = 0; c < choicesArr.length; c++) {
         const ch = choicesArr[c];
-
-        const html = String((ch as any)?.html ?? (ch as any)?.text ?? ch ?? "");
+        const html = String(ch?.html ?? ch?.text ?? "");
         if (hasHighlightMarkup(html)) {
-          const fallbackId = String.fromCharCode(65 + c);
-          const cid = String((ch as any)?.id ?? (ch as any)?.ident ?? "") || fallbackId;
-          highlightHits.push(cid);
-
-          if (typeof (ch as any)?.html === "string") (ch as any).html = stripHighlightMarkup((ch as any).html);
-          if (typeof (ch as any)?.text === "string") (ch as any).text = stripHighlightMarkup((ch as any).text);
-        } else {
-          if (typeof (ch as any)?.html === "string") (ch as any).html = stripHighlightMarkup((ch as any).html);
-          if (typeof (ch as any)?.text === "string") (ch as any).text = stripHighlightMarkup((ch as any).text);
+          highlightHits.push(String(ch?.id ?? ""));
         }
+
+        if (typeof ch?.html === "string") ch.html = stripHighlightMarkup(ch.html);
+        if (typeof ch?.text === "string") ch.text = stripHighlightMarkup(ch.text);
       }
 
       if (typeof it.promptHtml === "string") it.promptHtml = stripHighlightMarkup(it.promptHtml);
@@ -407,22 +417,36 @@ export async function POST(req: Request) {
       if (typeof it.prompt === "string") it.prompt = stripHighlightMarkup(it.prompt);
 
       const hasChoiceHighlight = highlightHits.length > 0;
-      const keepCorrect = hasStrict || hasBlock || hasChoiceHighlight;
+
+      // NEW: answer key evidence for this question number (1 based)
+      const keyLetters = answerKeyMap[i + 1] ?? [];
+      const hasAnswerKey = Array.isArray(keyLetters) && keyLetters.length > 0;
+
+      const keepCorrect = hasStrict || hasBlock || hasChoiceHighlight || hasAnswerKey;
 
       if (hasChoiceHighlight) {
         const unique = Array.from(new Set(highlightHits.filter(Boolean)));
         it.correctChoiceIds = unique;
 
         if (Array.isArray(it.choices)) {
-          it.choices = it.choices.map((c: any, idx: number) => {
-            const fallbackId = String.fromCharCode(65 + idx);
-            const cid = String(c?.id ?? c?.ident ?? "") || fallbackId;
-            return {
+          it.choices = it.choices.map((c: any) => ({
+            ...c,
+            correct: unique.includes(String(c?.id ?? "")),
+          }));
+        }
+      } else if (hasAnswerKey) {
+        // Only apply answer key when the model did not already produce correct ids.
+        const currentIds: string[] = Array.isArray(it.correctChoiceIds) ? it.correctChoiceIds.map((x: any) => String(x)) : [];
+        if (!currentIds.length) {
+          const ids = keyLetters.map((L) => String(L).toUpperCase()).filter((L) => /^[A-D]$/.test(L));
+          it.correctChoiceIds = ids;
+
+          if (Array.isArray(it.choices)) {
+            it.choices = it.choices.map((c: any) => ({
               ...c,
-              id: c?.id ?? cid,
-              correct: unique.includes(cid),
-            };
-          });
+              correct: ids.includes(String(c?.id ?? "").toUpperCase()),
+            }));
+          }
         }
       }
 
