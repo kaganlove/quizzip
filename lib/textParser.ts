@@ -25,72 +25,52 @@ function lineHasHighlight(s: string) {
     /bgcolor\s*=/i.test(t) ||
     /background-color\s*:/i.test(t) ||
     /background\s*:/i.test(t) ||
-    /mso-highlight\s*:/i.test(t)
+    /mso-highlight\s*:/i.test(t) ||
+    /\bhighlight\b/i.test(t) ||
+    /\bql-bg-[a-z0-9_-]+\b/i.test(t) ||
+    /class\s*=\s*["'][^"']*\bql-bg-[a-z0-9_-]+\b[^"']*["']/i.test(t)
   );
 }
 
-function looksLikeAnswerKeyLine(line: string) {
-  return /^(?:\s*(?:correct\s*answers?|correct\s*answer|correct|answer)\b)/i.test(line ?? "");
-}
-
-function extractAnswerTail(line: string): string | null {
+function extractAnswerLetters(line: string): string[] {
   const s = (line ?? "").trim();
-  if (!s) return null;
+  if (!s) return [];
 
   const m = s.match(/^(?:correct\s*answers?|correct\s*answer|correct|answer)\s*[:=]?\s*(.+)$/i);
-  if (!m) return null;
-
-  return String(m[1] ?? "").trim() || null;
-}
-
-function extractAnswerLetters(line: string): string[] {
-  const tail = extractAnswerTail(line);
-  if (!tail) return [];
-
-  const compact = tail.replace(/\s+/g, " ").trim();
-
-  const lettersOnly =
-    /^(?:[a-d])(?:\s*(?:,|and|&)\s*(?:[a-d]))*$/i.test(compact) ||
-    /^(?:option\s*[a-d])(?:\s*(?:,|and|&)\s*option\s*[a-d])*$/i.test(compact);
-
-  if (!lettersOnly) return [];
+  const tail = (m ? m[1] : s).trim();
 
   const found: string[] = [];
 
-  for (const opt of compact.matchAll(/\boption\s*([a-d])\b/gi)) {
+  for (const opt of tail.matchAll(/\boption\s*([a-d])\b/gi)) {
     found.push((opt[1] ?? "").toUpperCase());
   }
 
-  for (const mm of compact.matchAll(/\b([a-d])\b/gi)) {
+  for (const mm of tail.matchAll(/\b([a-d])\b/gi)) {
     found.push((mm[1] ?? "").toUpperCase());
   }
 
   return Array.from(new Set(found)).filter((x) => /^[A-D]$/.test(x));
 }
 
-function extractAnswerText(line: string): string | null {
-  const tail = extractAnswerTail(line);
-  if (!tail) return null;
+function extractTrueFalseAnswer(line: string): "true" | "false" | null {
+  const s = (line ?? "").trim();
+  if (!s) return null;
 
-  if (/^\s*(?:[a-d])(?:\s*(?:,|and|&)\s*(?:[a-d]))*\s*$/i.test(tail)) return null;
-  if (/^\s*(?:option\s*[a-d])(?:\s*(?:,|and|&)\s*option\s*[a-d])*\s*$/i.test(tail)) return null;
-
-  const cleaned = tail.replace(/^\((?:text|exact)\)\s*:\s*/i, "").trim();
-  return cleaned || null;
+  const m = s.match(/^(?:correct|answer)\s*[:=]?\s*(true|false)\b/i);
+  if (!m) return null;
+  return m[1].toLowerCase() === "true" ? "true" : "false";
 }
 
-function extractTrueFalseAnswer(line: string): "true" | "false" | null {
-  const tail = extractAnswerTail(line);
-  if (!tail) return null;
-
-  const m = tail.match(/\b(true|false)\b/i);
-  if (!m) return null;
-
-  return m[1].toLowerCase() === "true" ? "true" : "false";
+function looksLikeAnswerKeyLine(line: string) {
+  return /^(?:\s*(?:correct\s*answers?|correct\s*answer|correct|answer)\b)/i.test(line ?? "");
 }
 
 function normLines(raw: string) {
   return raw.replace(/\r\n/g, "\n").replace(/\r/g, "\n");
+}
+
+function stripNumPrefix(line: string) {
+  return line.replace(/^\s*\(?\s*\d+\s*[\.\)\:\-]\s+/, "").trim();
 }
 
 function isBlank(line: string) {
@@ -99,10 +79,6 @@ function isBlank(line: string) {
 
 function looksLikeQuestionStart(line: string) {
   return /^\s*\(?\s*\d+\s*[\.\)\:\-]\s+/.test(line);
-}
-
-function stripNumPrefix(line: string) {
-  return line.replace(/^\s*\(?\s*\d+\s*[\.\)\:\-]\s+/, "").trim();
 }
 
 function splitIntoQuestionBlocks(raw: string) {
@@ -135,50 +111,19 @@ function stripChoiceLabel(text: string) {
   return s.replace(/^\s*\(?\s*[A-D]\s*[\)\.\:\-]\s+/i, "").trim();
 }
 
-function looksIgnorableLine(line: string) {
-  const s = (line ?? "").trim();
-  if (!s) return true;
-  return /^(section\b|directions\b|note\b)/i.test(s);
-}
-
-function applyAnswerTextToChoices(choices: ParsedChoice[], answerText: string | null) {
-  if (!answerText) return;
-
-  const target = answerText.trim().toLowerCase();
-  if (!target) return;
-
-  for (const c of choices) {
-    const ct = String(c.text ?? "").trim().toLowerCase();
-    if (!ct) continue;
-
-    if (ct === target) {
-      c.correct = true;
-      continue;
-    }
-
-    if (ct.includes(target) || target.includes(ct)) {
-      c.correct = true;
-    }
-  }
-}
-
 function parseBracketMulti(lines: string[], promptText: string): ParsedItem | null {
-  const optionRe = /^\s*\[(\*?)\]\s+(.*\S)\s*$/;
+  const optionRe = /^\s*\[(\*?|x|X)?\]\s+(.*\S)\s*$/;
 
   const choices: ParsedChoice[] = [];
   let answerLetters: string[] = [];
-  let answerText: string | null = null;
   let tfAnswer: "true" | "false" | null = null;
 
   for (const ln of lines) {
     if (looksLikeAnswerKeyLine(ln)) {
-      if (!answerLetters.length) answerLetters = extractAnswerLetters(ln);
-      if (!answerText) answerText = extractAnswerText(ln);
+      answerLetters = answerLetters.length ? answerLetters : extractAnswerLetters(ln);
       tfAnswer = tfAnswer ?? extractTrueFalseAnswer(ln);
       continue;
     }
-
-    if (looksIgnorableLine(ln) && choices.length >= 2) continue;
 
     const m = ln.match(optionRe);
     if (!m) return null;
@@ -199,8 +144,6 @@ function parseBracketMulti(lines: string[], promptText: string): ParsedItem | nu
         const idx = L.charCodeAt(0) - 65;
         if (idx >= 0 && idx < choices.length) choices[idx].correct = true;
       }
-    } else {
-      applyAnswerTextToChoices(choices, answerText);
     }
   }
 
@@ -216,18 +159,14 @@ function parseStarredAlphaChoices(lines: string[], promptText: string): ParsedIt
 
   const choices: ParsedChoice[] = [];
   let answerLetters: string[] = [];
-  let answerText: string | null = null;
   let tfAnswer: "true" | "false" | null = null;
 
   for (const ln of lines) {
     if (looksLikeAnswerKeyLine(ln)) {
       if (!answerLetters.length) answerLetters = extractAnswerLetters(ln);
-      if (!answerText) answerText = extractAnswerText(ln);
       tfAnswer = tfAnswer ?? extractTrueFalseAnswer(ln);
       continue;
     }
-
-    if (looksIgnorableLine(ln) && choices.length >= 2) continue;
 
     const tf = ln.trim();
     if (/^\*?\s*(true|false)\s*$/i.test(tf)) {
@@ -248,6 +187,7 @@ function parseStarredAlphaChoices(lines: string[], promptText: string): ParsedIt
       lineHasHighlight(m[3]) ||
       /^\s*\[\s*\*\s*\]\s*/.test(ln) ||
       /\(\s*correct\s*\)$/i.test(ln) ||
+      /\s+-\s*correct\s*$/i.test(ln) ||
       /\s+correct\s*$/i.test(ln) ||
       /\s+\u2713\s*$/i.test(ln);
 
@@ -264,17 +204,19 @@ function parseStarredAlphaChoices(lines: string[], promptText: string): ParsedIt
         const idx = L.charCodeAt(0) - 65;
         if (idx >= 0 && idx < choices.length) choices[idx].correct = true;
       }
-    } else {
-      applyAnswerTextToChoices(choices, answerText);
     }
   }
 
   const correctCount = choices.filter((c) => c.correct).length;
 
-  const isTf = choices.length === 2 && choices.every((c) => /^(true|false)$/i.test(c.text.trim()));
+  if (correctCount === 0) {
+    const isTf = choices.length === 2 && choices.every((c) => /^(true|false)$/i.test(c.text.trim()));
+    return { type: isTf ? "true_false" : "multiple_choice_single", promptText, choices };
+  }
 
-  if (correctCount === 0) return { type: isTf ? "true_false" : "multiple_choice_single", promptText, choices };
   if (correctCount > 1) return { type: "multiple_choice_multiple", promptText, choices };
+
+  const isTf = choices.length === 2 && choices.every((c) => /^(true|false)$/i.test(c.text.trim()));
   return { type: isTf ? "true_false" : "multiple_choice_single", promptText, choices };
 }
 
@@ -342,9 +284,4 @@ export function parseStrictQuizText(raw: string): { quiz: ParsedQuiz | null; rea
   const items: ParsedItem[] = [];
   for (const b of blocks) {
     const it = parseOneBlock(b);
-    if (!it) return { quiz: null, reason: "One or more blocks did not match strict formatting." };
-    items.push(it);
-  }
-
-  return { quiz: { items } };
-}
+    if (!it) return { quiz: null, reason: "One or more blocks did not match strict formatting."
