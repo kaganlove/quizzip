@@ -27,8 +27,7 @@ function lineHasHighlight(s: string) {
     /background\s*:/i.test(t) ||
     /mso-highlight\s*:/i.test(t) ||
     /\bhighlight\b/i.test(t) ||
-    /\bql-bg-[a-z0-9_-]+\b/i.test(t) ||
-    /class\s*=\s*["'][^"']*\bql-bg-[a-z0-9_-]+\b[^"']*["']/i.test(t)
+    /class\s*=\s*["'][^"']*\bql-bg-[^"']*["']/i.test(t)
   );
 }
 
@@ -70,6 +69,7 @@ function normLines(raw: string) {
 }
 
 function stripNumPrefix(line: string) {
+  // Accept: 12. , 12) , (12) , 12: , 12 -
   return line.replace(/^\s*\(?\s*\d+\s*[\.\)\:\-]\s+/, "").trim();
 }
 
@@ -78,6 +78,7 @@ function isBlank(line: string) {
 }
 
 function looksLikeQuestionStart(line: string) {
+  // Accept: 12. , 12) , (12) , 12: , 12 -
   return /^\s*\(?\s*\d+\s*[\.\)\:\-]\s+/.test(line);
 }
 
@@ -108,11 +109,15 @@ function splitIntoQuestionBlocks(raw: string) {
 
 function stripChoiceLabel(text: string) {
   const s = (text ?? "").trim();
+  // Example: "B. Process" or "b) Process" or "(C): Process"
   return s.replace(/^\s*\(?\s*[A-D]\s*[\)\.\:\-]\s+/i, "").trim();
 }
 
 function parseBracketMulti(lines: string[], promptText: string): ParsedItem | null {
-  const optionRe = /^\s*\[(\*?|x|X)?\]\s+(.*\S)\s*$/;
+  // [ ] Option
+  // [*] Option
+  // [x] Option
+  const optionRe = /^\s*\[(\*|x|X| )\]\s+(.*\S)\s*$/;
 
   const choices: ParsedChoice[] = [];
   let answerLetters: string[] = [];
@@ -129,7 +134,12 @@ function parseBracketMulti(lines: string[], promptText: string): ParsedItem | nu
     if (!m) return null;
 
     const choiceText = m[2];
-    const isCorrect = Boolean(m[1]) || lineHasHighlight(ln) || lineHasHighlight(choiceText);
+    const bracket = (m[1] ?? "").toString();
+    const isCorrect =
+      bracket.trim() === "*" ||
+      bracket.trim().toLowerCase() === "x" ||
+      lineHasHighlight(ln) ||
+      lineHasHighlight(choiceText);
 
     choices.push({ text: choiceText, correct: isCorrect });
   }
@@ -155,6 +165,9 @@ function parseBracketMulti(lines: string[], promptText: string): ParsedItem | nu
 }
 
 function parseStarredAlphaChoices(lines: string[], promptText: string): ParsedItem | null {
+  // a) 1
+  // *b) 2
+  // Also allow: "B. Text", "* B. Text", "(A): Text", "A - Text"
   const re = /^\s*(\*)?\s*\(?\s*([a-d])\s*[\)\.\:\-]\s+(.*\S)\s*$/i;
 
   const choices: ParsedChoice[] = [];
@@ -214,7 +227,9 @@ function parseStarredAlphaChoices(lines: string[], promptText: string): ParsedIt
     return { type: isTf ? "true_false" : "multiple_choice_single", promptText, choices };
   }
 
-  if (correctCount > 1) return { type: "multiple_choice_multiple", promptText, choices };
+  if (correctCount > 1) {
+    return { type: "multiple_choice_multiple", promptText, choices };
+  }
 
   const isTf = choices.length === 2 && choices.every((c) => /^(true|false)$/i.test(c.text.trim()));
   return { type: isTf ? "true_false" : "multiple_choice_single", promptText, choices };
@@ -273,6 +288,7 @@ function parseOneBlock(block: string): ParsedItem | null {
   const sa = parseShortAnswer(rest, promptFirstLine);
   if (sa) return sa;
 
+  // Minimal fallback: keep the question instead of dropping it.
   const combined = [promptFirstLine, ...rest].join("\n").trim();
   return { type: "essay", promptText: combined };
 }
@@ -284,4 +300,9 @@ export function parseStrictQuizText(raw: string): { quiz: ParsedQuiz | null; rea
   const items: ParsedItem[] = [];
   for (const b of blocks) {
     const it = parseOneBlock(b);
-    if (!it) return { quiz: null, reason: "One or more blocks did not match strict formatting."
+    if (!it) return { quiz: null, reason: "One or more blocks did not match strict formatting." };
+    items.push(it);
+  }
+
+  return { quiz: { items } };
+}
